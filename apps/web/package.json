@@ -1,0 +1,28 @@
+{
+  "name": "@restaurent/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev --hostname 0.0.0.0",
+    "lint": "eslint \"src/**/*.ts\" \"src/**/*.tsx\" \"tests/**/*.ts\"",
+    "start": "next start",
+    "test": "vitest run \"src/**/*.test.ts\" \"src/**/*.spec.ts\" \"src/**/*.test.tsx\" \"src/**/*.spec.tsx\" --passWithNoTests",
+    "test:e2e": "playwright test --pass-with-no-tests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@restaurent/shared": "*",
+    "next": "^16.2.4",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
+  }
+}

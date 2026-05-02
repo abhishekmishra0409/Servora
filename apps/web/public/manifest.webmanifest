@@ -1,0 +1,16 @@
+{
+  "name": "Restaurent SaaS",
+  "short_name": "Restaurent",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4efe6",
+  "theme_color": "#b24d2f",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
+

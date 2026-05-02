@@ -1,0 +1,8 @@
+erDiagram
+  TENANT ||--o{ BRANCH : owns
+  BRANCH ||--o{ MENU_ITEM : scopes
+  BRANCH ||--o{ TABLE : scopes
+  TABLE ||--o{ TABLE_SESSION : opens
+  TABLE_SESSION ||--o{ ORDER : creates
+  TABLE_SESSION ||--o{ SERVICE_REQUEST : creates
+
