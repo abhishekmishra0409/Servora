@@ -25,9 +25,15 @@ export class StaffJwtGuard implements CanActivate {
       throw new UnauthorizedException('Missing bearer token');
     }
 
-    const payload = this.jwtService.verify<StaffJwtPayload>(token, {
-      secret: this.configService.getOrThrow<string>('auth.accessSecret'),
-    });
+    let payload: StaffJwtPayload;
+
+    try {
+      payload = this.jwtService.verify<StaffJwtPayload>(token, {
+        secret: this.configService.getOrThrow<string>('auth.accessSecret'),
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid or expired staff token');
+    }
 
     if (payload.type !== 'staff') {
       throw new UnauthorizedException('Invalid staff token');

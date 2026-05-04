@@ -1,9 +1,11 @@
 node_modules/
 dist/
+build/
 .next/
 coverage/
 playwright-report/
 test-results/
+logs/
 *.log
 .env
 .env.*
@@ -13,10 +15,40 @@ test-results/
 .cache/
 .eslintcache
 .vite/
+.npm/
+.pnpm-store/
+
+# Workspace app/package artifacts
+apps/*/dist/
+apps/*/build/
+apps/*/.next/
+apps/*/.turbo/
+apps/*/.vite/
+apps/*/coverage/
+packages/*/dist/
+packages/*/build/
+packages/*/.turbo/
+packages/*/coverage/
+
+# Local editor and OS state
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
 .DS_Store
 Thumbs.db
 *.local
 *.tsbuildinfo
+
+# Local temp/runtime output
+tmp/
+temp/
+screenshots/
+*.tmp
+*.temp
+*.pid
 _codex_*.txt
 _product_document.txt
 .codex-*.log

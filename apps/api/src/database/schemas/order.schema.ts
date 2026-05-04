@@ -87,4 +87,5 @@ export class Order {
 
 export const OrderSchema = SchemaFactory.createForClass(Order);
 OrderSchema.index({ branchId: 1, orderNo: 1 }, { unique: true });
+OrderSchema.index({ branchId: 1, status: 1, submittedAt: -1 });
 OrderSchema.index({ tableSessionId: 1, submittedAt: -1 });

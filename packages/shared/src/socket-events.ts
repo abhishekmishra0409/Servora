@@ -39,3 +39,56 @@ export interface ServiceRequestPayload {
   tableId: string;
 }
 
+export interface PaymentStatusPayload {
+  orderId: string;
+  paymentId: string;
+  status: string;
+}
+
+export interface TableStatusPayload {
+  status: string;
+  tableId: string;
+}
+
+export interface MenuChangedPayload {
+  branchId: string;
+  menuItemId?: string;
+  categoryId?: string;
+  changeType: 'created' | 'updated' | 'deleted';
+}
+
+export interface BranchAnalyticsRefreshPayload {
+  branchId: string;
+  tenantId: string;
+  date?: string;
+}
+
+export interface BillingReconcileJobPayload {
+  provider: 'stripe';
+  payload: Record<string, unknown>;
+}
+
+export interface NotificationJobPayload {
+  branchId?: string;
+  orderId?: string;
+  requestId?: string;
+  tenantId: string;
+  [key: string]: unknown;
+}
+
+export interface MediaCleanupJobPayload {
+  menuItemId?: string;
+  url: string;
+}
+
+export interface CleanupCloseTableSessionJobPayload {
+  branchId?: string;
+  olderThanMinutes?: number;
+  tableSessionId?: string;
+}
+
+export interface AnalyticsRefreshBranchRollupJobPayload {
+  branchId: string;
+  date?: string;
+  tenantId: string;
+}

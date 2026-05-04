@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import type { Connection } from 'mongoose';
 
-import { createTestApp, getBaseUrl } from './helpers/test-app';
+import { cleanupTestDatabase, createTestApp, getBaseUrl } from './helpers/test-app';
 import { seedRestaurantFixture } from './helpers/fixtures';
 
 describe('public table context', () => {
@@ -16,7 +16,7 @@ describe('public table context', () => {
 
   afterAll(async () => {
     if (connection) {
-      await connection.dropDatabase();
+      await cleanupTestDatabase(app);
       await connection.close();
     }
     if (app) {

@@ -15,6 +15,8 @@ const normalizeLocalUrl = (value: string): string => {
 };
 const apiUrl = configuredApiUrl ? normalizeLocalUrl(configuredApiUrl) : '';
 const API_BASE_URL = apiUrl ? (apiUrl.endsWith('/api/v1') ? apiUrl : `${apiUrl}/api/v1`) : '/api/v1';
+const cmsTokenKey = 'restaurent:cms:accessToken';
+const cmsRefreshTokenKey = 'restaurent:cms:refreshToken';
 
 export interface BucketItem {
   addons: { id: string; label: string; priceDelta: number }[];
@@ -214,9 +216,51 @@ export interface CmsBillingSummary {
   subscription: { planCode: string; provider: string; renewsAt?: string; status: string; tenantId: string } | null;
 }
 
+export interface CmsFloor {
+  _id?: string;
+  branchId: string;
+  id?: string;
+  name: string;
+  sortOrder: number;
+  tenantId: string;
+}
+
+export interface CmsAuditLog {
+  _id?: string;
+  action: string;
+  actorUserId?: string;
+  branchId?: string;
+  createdAt?: string;
+  entityId: string;
+  entityType: string;
+  payload: Record<string, unknown>;
+  tenantId: string;
+}
+
+export interface PaymentSnapshot {
+  _id?: string;
+  amount: number;
+  currency: string;
+  id?: string;
+  method: string;
+  orderId: string;
+  provider: string;
+  status: string;
+}
+
+export interface MediaUploadSignature {
+  apiKey: string;
+  cloudName: string;
+  folder: string;
+  signature: string;
+  timestamp: number;
+}
+
 interface ApiOptions extends RequestInit {
   token?: string;
 }
+
+let refreshPromise: Promise<string | null> | null = null;
 
 export class ApiError extends Error {
   constructor(
@@ -227,21 +271,66 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
-  const headers = new Headers(options.headers);
-  headers.set('Accept', 'application/json');
-
-  if (options.body && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
-  if (options.token) {
-    headers.set('Authorization', `Bearer ${options.token}`);
+const storedCmsToken = (): string => {
+  if (typeof window === 'undefined') {
+    return '';
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  return window.localStorage.getItem(cmsTokenKey) ?? '';
+};
+
+const clearCmsAuth = (): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.removeItem(cmsTokenKey);
+  window.localStorage.removeItem(cmsRefreshTokenKey);
+  window.localStorage.removeItem('restaurent:cms:branchId');
+  window.localStorage.removeItem('restaurent:cms:tenantId');
+};
+
+async function refreshCmsAccessToken(): Promise<string | null> {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const refreshToken = window.localStorage.getItem(cmsRefreshTokenKey);
+      if (!refreshToken) {
+        return null;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        body: JSON.stringify({ refreshToken }),
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { accessToken?: string; refreshToken?: string }
+        | null;
+
+      if (!response.ok || !payload?.accessToken || !payload.refreshToken) {
+        clearCmsAuth();
+        return null;
+      }
+
+      window.localStorage.setItem(cmsTokenKey, payload.accessToken);
+      window.localStorage.setItem(cmsRefreshTokenKey, payload.refreshToken);
+      return payload.accessToken;
+    })().finally(() => {
+      refreshPromise = null;
+    });
+  }
+
+  return refreshPromise;
+}
+
+async function readJsonResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => null)) as { message?: string } | T | null;
 
   if (!response.ok) {
@@ -253,6 +342,46 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
   }
 
   return payload as T;
+}
+
+function requestHeaders(options: ApiOptions, tokenOverride?: string): Headers {
+  const headers = new Headers(options.headers);
+  headers.set('Accept', 'application/json');
+
+  if (options.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const authToken = tokenOverride ?? (options.token ? storedCmsToken() || options.token : '');
+  if (authToken) {
+    headers.set('Authorization', `Bearer ${authToken}`);
+  }
+
+  return headers;
+}
+
+export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: requestHeaders(options),
+  });
+
+  if (response.status === 401 && options.token) {
+    const nextToken = await refreshCmsAccessToken();
+    if (nextToken) {
+      const retryResponse = await fetch(`${API_BASE_URL}${path}`, {
+        ...options,
+        headers: requestHeaders(options, nextToken),
+      });
+      return readJsonResponse<T>(retryResponse);
+    }
+
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      window.location.assign('/login');
+    }
+  }
+
+  return readJsonResponse<T>(response);
 }
 
 export const getTableContext = (qrToken: string, options: ApiOptions = {}): Promise<TableContext> =>
@@ -319,6 +448,11 @@ export const getOrderStatus = (orderId: string, qrToken: string): Promise<OrderS
     `/public/orders/${encodeURIComponent(orderId)}/status?qrToken=${encodeURIComponent(qrToken)}`,
   );
 
+export const getPublicOrderPayment = (orderId: string, qrToken: string): Promise<PaymentSnapshot | null> =>
+  apiRequest<PaymentSnapshot | null>(
+    `/public/orders/${encodeURIComponent(orderId)}/payment?qrToken=${encodeURIComponent(qrToken)}`,
+  );
+
 export const getPublicOrders = (qrToken: string): Promise<OrderStatusSnapshot[]> =>
   apiRequest<OrderStatusSnapshot[]>(`/public/orders?qrToken=${encodeURIComponent(qrToken)}`);
 
@@ -348,6 +482,33 @@ export const updateOrderStatus = (id: string, status: string, token: string): Pr
   apiRequest<LiveOrder>(`/orders/${id}/status`, {
     body: JSON.stringify({ status }),
     method: 'PATCH',
+    token,
+  });
+
+export const requestBill = (orderId: string, token: string): Promise<PaymentSnapshot> =>
+  apiRequest<PaymentSnapshot>(`/orders/${orderId}/bill-request`, { method: 'POST', token });
+
+export const createPaymentCheckoutSession = (
+  orderId: string,
+  provider: string,
+  token: string,
+): Promise<{ paymentId: string; provider: string; url: string }> =>
+  apiRequest<{ paymentId: string; provider: string; url: string }>('/payments/checkout-session', {
+    body: JSON.stringify({ orderId, provider }),
+    method: 'POST',
+    token,
+  });
+
+export const getPayment = (paymentId: string, token: string): Promise<PaymentSnapshot> =>
+  apiRequest<PaymentSnapshot>(`/payments/${paymentId}`, { token });
+
+export const markCashPaid = (paymentId: string, token: string): Promise<PaymentSnapshot> =>
+  apiRequest<PaymentSnapshot>(`/payments/${paymentId}/mark-cash-paid`, { method: 'POST', token });
+
+export const signMediaUpload = (token: string, folder?: string): Promise<MediaUploadSignature> =>
+  apiRequest<MediaUploadSignature>('/media/sign-upload', {
+    body: JSON.stringify({ folder }),
+    method: 'POST',
     token,
   });
 
@@ -436,6 +597,35 @@ export const regenerateCmsQr = (tableId: string, token: string): Promise<{ token
 
 export const getCmsServiceRequests = (branchId: string, token: string): Promise<CmsServiceRequest[]> =>
   apiRequest<CmsServiceRequest[]>(`/service-requests?branchId=${encodeURIComponent(branchId)}`, { token });
+
+export const getCmsFloors = (branchId: string, token: string): Promise<CmsFloor[]> =>
+  apiRequest<CmsFloor[]>(`/cms/floors?branchId=${encodeURIComponent(branchId)}`, { token });
+
+export const createCmsFloor = (
+  body: { branchId: string; name: string; sortOrder?: number; tenantId: string },
+  token: string,
+): Promise<CmsFloor> =>
+  apiRequest<CmsFloor>('/cms/floors', {
+    body: JSON.stringify(body),
+    method: 'POST',
+    token,
+  });
+
+export const updateCmsFloor = (id: string, body: Partial<Pick<CmsFloor, 'name' | 'sortOrder'>>, token: string): Promise<CmsFloor> =>
+  apiRequest<CmsFloor>(`/cms/floors/${id}`, {
+    body: JSON.stringify(body),
+    method: 'PATCH',
+    token,
+  });
+
+export const deleteCmsFloor = (id: string, token: string): Promise<{ success: boolean }> =>
+  apiRequest<{ success: boolean }>(`/cms/floors/${id}`, { method: 'DELETE', token });
+
+export const getCmsAuditLogs = (tenantId: string, branchId: string, token: string): Promise<CmsAuditLog[]> =>
+  apiRequest<CmsAuditLog[]>(
+    `/cms/audit-logs?tenantId=${encodeURIComponent(tenantId)}&branchId=${encodeURIComponent(branchId)}`,
+    { token },
+  );
 
 export const getCmsStaff = (branchId: string, token: string): Promise<CmsStaffMember[]> =>
   apiRequest<CmsStaffMember[]>(`/cms/staff?branchId=${encodeURIComponent(branchId)}`, { token });

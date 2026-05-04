@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ServiceRequestStatus } from '@restaurent/shared';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 
@@ -17,10 +18,15 @@ export class AnalyticsService {
   ) {}
 
   async overview(branchId: string): Promise<unknown> {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+
     const [orders, sessions, serviceRequests] = await Promise.all([
-      this.orderModel.find({ branchId }).lean().exec(),
+      this.orderModel.find({ branchId, submittedAt: { $gte: start, $lt: end } }).lean().exec(),
       this.tableSessionModel.find({ branchId, status: 'active' }).lean().exec(),
-      this.serviceRequestModel.find({ branchId, status: { $ne: 'resolved' } }).lean().exec(),
+      this.serviceRequestModel.find({ branchId, status: { $ne: ServiceRequestStatus.Resolved } }).lean().exec(),
     ]);
 
     const todayRevenue = orders.reduce((total, order) => total + order.grandTotal, 0);
@@ -36,7 +42,20 @@ export class AnalyticsService {
   }
 
   async menu(branchId: string): Promise<unknown> {
-    const items = await this.menuItemModel.find({ branchId }).lean().exec();
+    const [items, orders] = await Promise.all([
+      this.menuItemModel.find({ branchId }).lean().exec(),
+      this.orderModel.find({ branchId }).lean().exec(),
+    ]);
+    const salesByItem = new Map<string, { quantity: number; revenue: number }>();
+
+    for (const order of orders) {
+      for (const item of order.items) {
+        const current = salesByItem.get(item.menuItemId) ?? { quantity: 0, revenue: 0 };
+        current.quantity += item.quantity;
+        current.revenue += item.quantity * item.unitPrice;
+        salesByItem.set(item.menuItemId, current);
+      }
+    }
 
     return {
       itemCount: items.length,
@@ -44,8 +63,9 @@ export class AnalyticsService {
         available: item.available,
         name: item.name,
         price: item.price,
+        quantitySold: salesByItem.get(String(item._id))?.quantity ?? 0,
+        revenue: Number((salesByItem.get(String(item._id))?.revenue ?? 0).toFixed(2)),
       })),
     };
   }
 }
-

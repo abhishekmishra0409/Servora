@@ -1,13 +1,17 @@
 "use client";
 
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+
+import { clearCmsSettings, readCmsSettings } from '../../lib/cms-storage';
 
 const links = [
   { href: '/dashboard',          icon: 'dashboard',           label: 'Dashboard'   },
   { href: '/orders',             icon: 'receipt_long',        label: 'Orders'      },
   { href: '/tables',             icon: 'table_restaurant',    label: 'Tables'      },
+  { href: '/floors',             icon: 'layers',              label: 'Floors'      },
   { href: '/qr',                 icon: 'qr_code_2',           label: 'QR Codes'    },
   { href: '/menu/categories',    icon: 'category',            label: 'Categories'  },
   { href: '/menu/items',         icon: 'menu_book',           label: 'Menu Items'  },
@@ -15,12 +19,38 @@ const links = [
   { href: '/service-requests',   icon: 'notifications_active',label: 'Requests'    },
   { href: '/analytics',          icon: 'monitoring',          label: 'Analytics'   },
   { href: '/staff',              icon: 'groups',              label: 'Staff'       },
+  { href: '/audit-logs',         icon: 'manage_search',       label: 'Audit Logs'  },
   { href: '/subscription',       icon: 'workspace_premium',   label: 'Subscription'},
   { href: '/settings',           icon: 'settings',            label: 'Settings'    },
 ];
 
 export default function CmsLayout({ children }: { children: ReactNode }): ReactNode {
   const pathname = usePathname();
+  const router = useRouter();
+  const [checkedAuth, setCheckedAuth] = useState(false);
+
+  useEffect(() => {
+    const settings = readCmsSettings();
+    if (!settings.token && !settings.refreshToken) {
+      router.replace('/login');
+      return;
+    }
+
+    setCheckedAuth(true);
+  }, [router]);
+
+  function logout(): void {
+    clearCmsSettings();
+    router.replace('/login');
+  }
+
+  if (!checkedAuth) {
+    return (
+      <main className="page-shell">
+        <p className="notice-text">Checking session...</p>
+      </main>
+    );
+  }
 
   return (
     <div className="cms-shell">
@@ -69,7 +99,7 @@ export default function CmsLayout({ children }: { children: ReactNode }): ReactN
           <div className="cms-sidebar__footer-links">
             <Link href="/login">Switch account</Link>
             <span style={{ color: 'var(--outline-variant)' }}>·</span>
-            <Link href="/settings">Settings</Link>
+            <button className="button-link" onClick={logout} type="button">Logout</button>
           </div>
         </div>
       </aside>

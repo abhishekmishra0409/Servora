@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { documentId, getLiveOrders, updateOrderStatus, type LiveOrder } from '../lib/api-client';
+import { documentId, getLiveOrders, requestBill, updateOrderStatus, type LiveOrder } from '../lib/api-client';
 import { defaultBranchId, readSession } from '../lib/session';
+import { waiterSocket } from '../lib/socket';
 
 const money = (value: number): string =>
   new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
@@ -26,8 +27,15 @@ export function BillRequestsPage() {
 
   useEffect(() => {
     void load().catch((error: Error) => setMessage(error.message));
-    const interval = window.setInterval(() => void load().catch((error: Error) => setMessage(error.message)), 15000);
-    return () => window.clearInterval(interval);
+    const interval = window.setInterval(() => void load().catch((error: Error) => setMessage(error.message)), 30000);
+    const socket = session?.accessToken ? waiterSocket(session.accessToken) : null;
+    socket?.on('order.status_updated', () => void load().catch((error: Error) => setMessage(error.message)));
+    socket?.on('payment.bill_requested', () => void load().catch((error: Error) => setMessage(error.message)));
+    socket?.connect();
+    return () => {
+      window.clearInterval(interval);
+      socket?.disconnect();
+    };
   }, []);
 
   async function markServed(order: LiveOrder): Promise<void> {
@@ -39,6 +47,7 @@ export function BillRequestsPage() {
     setBusyOrderId(id);
     try {
       await updateOrderStatus(id, 'served', session.accessToken);
+      await requestBill(id, session.accessToken);
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not close this follow-up.');
@@ -94,7 +103,7 @@ export function BillRequestsPage() {
               <div className="p-4">
                 <button className="waiter-success-button w-full" disabled={busyOrderId === id} onClick={() => void markServed(order)} type="button">
                   <span className="material-symbols-outlined">check_circle</span>
-                  Mark served
+                  Mark served and request bill
                 </button>
               </div>
             </article>

@@ -5,7 +5,7 @@ import type { Connection } from 'mongoose';
 
 import { seedRestaurantFixture } from './helpers/fixtures';
 import { postJson } from './helpers/http';
-import { createTestApp, getBaseUrl } from './helpers/test-app';
+import { cleanupTestDatabase, createTestApp, getBaseUrl } from './helpers/test-app';
 
 describe('waiter confirmation flow', () => {
   let app: INestApplication;
@@ -18,7 +18,7 @@ describe('waiter confirmation flow', () => {
 
   afterAll(async () => {
     if (connection) {
-      await connection.dropDatabase();
+      await cleanupTestDatabase(app);
       await connection.close();
     }
     if (app) {

@@ -1,19 +1,26 @@
 'use client';
 
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { loginStaff } from '../../lib/api-client';
-import { writeCmsSettings } from '../../lib/cms-storage';
+import { readCmsSettings, writeCmsSettings } from '../../lib/cms-storage';
 
 export default function CmsLoginPage() {
   const router = useRouter();
+  const [branchId, setBranchId] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [messageTone, setMessageTone] = useState<'error' | 'success'>('error');
+
+  useEffect(() => {
+    const settings = readCmsSettings();
+    setBranchId(settings.branchId);
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -21,18 +28,21 @@ export default function CmsLoginPage() {
     setMessage('');
 
     try {
-      const session = await loginStaff(email, password);
-      const branchId = session.branchId || '';
+      const session = await loginStaff(email.trim(), password, branchId.trim() || undefined);
+      const nextBranchId = session.branchId || branchId.trim();
 
-      if (!branchId) {
+      if (!nextBranchId) {
+        setMessageTone('error');
         setMessage('Signed in, but no branch ID was returned for this account.');
         return;
       }
 
-      writeCmsSettings(branchId, session.accessToken, session.tenantId);
-      setMessage(remember ? 'Signed in. Session remembered on this device.' : 'Signed in.');
+      writeCmsSettings(nextBranchId, session.accessToken, session.tenantId, session.refreshToken);
+      setMessageTone('success');
+      setMessage('Signed in.');
       router.push('/dashboard');
     } catch (error) {
+      setMessageTone('error');
       setMessage(error instanceof Error ? error.message : 'Login failed.');
     } finally {
       setBusy(false);
@@ -41,16 +51,26 @@ export default function CmsLoginPage() {
 
   return (
     <main className="admin-login">
-      <section className="admin-login__media" aria-label="Restaurant preparation workspace">
+      <section className="admin-login__media" aria-label="Restaurant operations workspace">
         <img
-          alt="Organized restaurant kitchen preparation station"
+          alt="Restaurant dining room and service counter ready for operations"
           className="admin-login__image"
-          src="https://lh3.googleusercontent.com/aida-public/AB6AXuARC1Na07zC3KSPLVXAGt-T4SgcATpo85Dom4Ixges9j_WG1yK7aECXEsgVawXRAG4bnCPHQAIqDWaNFqY6krRNid1cljhOd1Z-ZiJB-CxjUNesKvD0g_heOg8UEZ5dDGw7U4WJ4vPikjzy6hZ2NM4U9mrJsFj_cxsqBM_CT_Xf8NQ1FSZ6_TJOLlAzcHCIXKZiqbkXlFP5ZTPo1bAx2oJ59WJMZ19chutzzVbtdzN0fcwh3ZSQ0SwZOCRtPm8KtzJnlhmNtqGxMRKX"
+          src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1400&q=80"
         />
         <div className="admin-login__shade" />
+        <div className="admin-login__status-strip" aria-hidden="true">
+          <span><span className="material-symbols-outlined">receipt_long</span>Live orders</span>
+          <span><span className="material-symbols-outlined">table_restaurant</span>Tables</span>
+          <span><span className="material-symbols-outlined">monitoring</span>Reports</span>
+        </div>
         <aside className="admin-login__callout">
-          <h2>Operational Excellence</h2>
-          <p>The tools you need to remain invisible during peak hours while providing absolute clarity.</p>
+          <div className="admin-login__callout-icon" aria-hidden="true">
+            <span className="material-symbols-outlined">shield_person</span>
+          </div>
+          <div>
+            <h2>Secure branch control</h2>
+            <p>Orders, tables, staff, billing, and audit logs stay scoped to the signed-in team.</p>
+          </div>
         </aside>
       </section>
 
@@ -58,70 +78,75 @@ export default function CmsLoginPage() {
         <div className="admin-login__form-wrap">
           <header className="admin-login__header">
             <div className="admin-login__brand">
-              <svg
-                aria-hidden="true"
-                className="admin-login__brand-icon"
-                fill="none"
-                viewBox="0 0 32 32"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M7 3v12M11 3v12M15 3v12M11 15v14M23 3c-2.7 2.2-4 5.2-4 9.1v5.2h5V29"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="3"
-                />
-              </svg>
+              <div className="admin-login__brand-icon" aria-hidden="true">
+                <span className="material-symbols-outlined">restaurant</span>
+              </div>
               <span>Restaurent</span>
             </div>
             <h1 id="admin-login-title">Admin Portal</h1>
-            <p>Welcome back. Please enter your details to access the dashboard.</p>
+            <p>Sign in with an owner or manager account to manage branch operations.</p>
           </header>
 
           <form className="admin-login__form" onSubmit={handleSubmit}>
             <label className="admin-login__field">
               <span>Email Address</span>
-              <input
-                autoComplete="email"
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="manager@restaurent.com"
-                required
-                type="email"
-                value={email}
-              />
+              <span className="admin-login__input-wrap">
+                <span className="material-symbols-outlined" aria-hidden="true">alternate_email</span>
+                <input
+                  autoComplete="email"
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="manager@restaurent.com"
+                  required
+                  type="email"
+                  value={email}
+                />
+              </span>
             </label>
 
             <label className="admin-login__field">
               <span>Password</span>
-              <input
-                autoComplete="current-password"
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="password"
-                required
-                type="password"
-                value={password}
-              />
+              <span className="admin-login__input-wrap">
+                <span className="material-symbols-outlined" aria-hidden="true">lock</span>
+                <input
+                  autoComplete="current-password"
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Enter password"
+                  required
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                />
+                <button
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="admin-login__icon-button"
+                  onClick={() => setShowPassword((current) => !current)}
+                  type="button"
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">
+                    {showPassword ? 'visibility_off' : 'visibility'}
+                  </span>
+                </button>
+              </span>
             </label>
 
+
             <div className="admin-login__options">
-              <label className="admin-login__remember">
-                <input checked={remember} onChange={(event) => setRemember(event.target.checked)} type="checkbox" />
-                <span>Remember me</span>
-              </label>
+              <span className="admin-login__device-note">Session stored on this device</span>
               <a href="mailto:support@restaurent.com">Forgot password?</a>
             </div>
 
             <button className="admin-login__submit" disabled={busy} type="submit">
-              {busy ? 'Signing in...' : 'Sign In'}
+              <span className="material-symbols-outlined" aria-hidden="true">
+                {busy ? 'progress_activity' : 'login'}
+              </span>
+              {busy ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
 
-          {message ? <p className="admin-login__message">{message}</p> : null}
+          {message ? <p className={`admin-login__message admin-login__message--${messageTone}`}>{message}</p> : null}
 
           <footer className="admin-login__support">
             <p>
-              Having trouble logging in? <a href="mailto:support@restaurent.com">Contact IT Support</a>
+              Need access for a new branch? <a href="mailto:support@restaurent.com">Contact support</a>
             </p>
           </footer>
         </div>

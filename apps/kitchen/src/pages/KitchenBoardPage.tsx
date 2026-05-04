@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getLiveOrders, orderId, updateOrderStatus, type LiveOrder } from '../lib/api-client';
 import { clearSession, defaultBranchId, readSession } from '../lib/session';
+import { kitchenSocket } from '../lib/socket';
 
 const LANES = [
   { status: 'accepted',  label: 'Accepted',  next: 'preparing', icon: 'inbox',                nextLabel: 'Start Preparing', mod: 'accepted'  },
@@ -41,8 +42,15 @@ export function KitchenBoardPage() {
 
   useEffect(() => {
     void load();
-    const t = window.setInterval(() => void load(), 15000);
-    return () => window.clearInterval(t);
+    const t = window.setInterval(() => void load(), 30000);
+    const socket = session?.accessToken ? kitchenSocket(session.accessToken) : null;
+    socket?.on('order.created', () => void load());
+    socket?.on('order.status_updated', () => void load());
+    socket?.connect();
+    return () => {
+      window.clearInterval(t);
+      socket?.disconnect();
+    };
   }, []);
 
   async function advance(order: LiveOrder, next: string): Promise<void> {

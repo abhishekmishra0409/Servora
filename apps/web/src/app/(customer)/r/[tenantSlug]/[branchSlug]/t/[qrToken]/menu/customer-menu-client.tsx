@@ -39,6 +39,8 @@ export function CustomerMenuClient({
   const [categories, setCategories] = useState<MenuCategory[]>(initialCategories);
   const [items, setItems] = useState<MenuItem[]>(initialItems);
   const [activeCategory, setActiveCategory] = useState('all');
+  const [allergenFilter, setAllergenFilter] = useState('all');
+  const [dietaryFilter, setDietaryFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [selections, setSelections] = useState<Record<string, ItemSelection>>({});
   const [busyItemId, setBusyItemId] = useState('');
@@ -89,15 +91,27 @@ export function CustomerMenuClient({
     return items.filter((item) => {
       const itemCategoryId = documentId(item);
       const categoryMatch = activeCategory === 'all' || item.categoryId === activeCategory || itemCategoryId === activeCategory;
+      const dietaryMatch = dietaryFilter === 'all' || item.dietaryFlags.includes(dietaryFilter);
+      const allergenMatch = allergenFilter === 'all' || !item.allergens.includes(allergenFilter);
       const textMatch =
         !normalizedQuery ||
         item.name.toLowerCase().includes(normalizedQuery) ||
         item.description.toLowerCase().includes(normalizedQuery) ||
-        item.dietaryFlags.some((flag) => flag.toLowerCase().includes(normalizedQuery));
+        item.dietaryFlags.some((flag) => flag.toLowerCase().includes(normalizedQuery)) ||
+        item.allergens.some((allergen) => allergen.toLowerCase().includes(normalizedQuery));
 
-      return categoryMatch && textMatch;
+      return categoryMatch && dietaryMatch && allergenMatch && textMatch;
     });
-  }, [activeCategory, items, query]);
+  }, [activeCategory, allergenFilter, dietaryFilter, items, query]);
+
+  const dietaryOptions = useMemo(
+    () => [...new Set(items.flatMap((item) => item.dietaryFlags))].filter(Boolean).sort(),
+    [items],
+  );
+  const allergenOptions = useMemo(
+    () => [...new Set(items.flatMap((item) => item.allergens))].filter(Boolean).sort(),
+    [items],
+  );
 
   function selectionFor(item: MenuItem): ItemSelection {
     const itemId = documentId(item);
@@ -207,6 +221,22 @@ export function CustomerMenuClient({
             );
           })}
         </div>
+        <select aria-label="Dietary filter" value={dietaryFilter} onChange={(event) => setDietaryFilter(event.target.value)}>
+          <option value="all">All diets</option>
+          {dietaryOptions.map((flag) => (
+            <option key={flag} value={flag}>
+              {flag}
+            </option>
+          ))}
+        </select>
+        <select aria-label="Allergen filter" value={allergenFilter} onChange={(event) => setAllergenFilter(event.target.value)}>
+          <option value="all">All allergens</option>
+          {allergenOptions.map((allergen) => (
+            <option key={allergen} value={allergen}>
+              Without {allergen}
+            </option>
+          ))}
+        </select>
       </section>
 
       {notice ? <p className="notice-text">{notice}</p> : null}

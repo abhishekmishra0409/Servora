@@ -23,4 +23,12 @@ export class PublicController {
   ): Promise<unknown> {
     return this.publicService.getOrderStatus(id, qrToken);
   }
+
+  @Get('orders/:id/payment')
+  getOrderPayment(
+    @Param('id') id: string,
+    @Query('qrToken') qrToken: string,
+  ): Promise<unknown> {
+    return this.publicService.getPaymentForOrder(id, qrToken);
+  }
 }

@@ -18,6 +18,7 @@ import {
   type CmsTenant,
 } from '../../../lib/api-client';
 import { readCmsSettings } from '../../../lib/cms-storage';
+import { createSocketClient } from '../../../lib/socket';
 
 const configuredCustomerOrigin = process.env.NEXT_PUBLIC_CUSTOMER_ORIGIN || '';
 const configuredRouterIp = process.env.NEXT_PUBLIC_ROUTER_IP || '';
@@ -116,6 +117,14 @@ export default function TablesPage() {
     setTenantId(settings.tenantId);
     setToken(settings.token);
     void load(settings.tenantId, settings.branchId, settings.token, origin);
+    const socket = settings.token ? createSocketClient(settings.token) : null;
+    ['table.status_changed', 'floor.changed', 'order.created', 'order.status_updated'].forEach((event) => {
+      socket?.on(event, () => void load(settings.tenantId, settings.branchId, settings.token, origin));
+    });
+    socket?.connect();
+    return () => {
+      socket?.disconnect();
+    };
   }, []);
 
   useEffect(() => {

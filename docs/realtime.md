@@ -18,8 +18,14 @@ Key events:
 - `bucket.locked`
 - `order.created`
 - `order.status_updated`
+- `payment.bill_requested`
+- `payment.status_updated`
 - `service_request.created`
 - `service_request.assigned`
 - `service_request.resolved`
-- `kitchen.ticket_updated`
+- `table.status_changed`
+- `floor.changed`
+- `menu.changed`
+- `branch.updated`
 
+The realtime service consumes internal API events from Redis and broadcasts them to Socket.IO rooms. CMS, customer, waiter, and kitchen screens keep polling fallbacks between 30 and 60 seconds when socket delivery is unavailable.

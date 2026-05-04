@@ -5,6 +5,7 @@ import { Model } from 'mongoose';
 import { Membership } from '../../database/schemas/membership.schema';
 import { User } from '../../database/schemas/user.schema';
 import { hashValue } from '../../common/utils/hash';
+import { AuditService } from '../../infrastructure/audit/audit.service';
 import { CreateStaffDto, UpdateStaffDto } from './dto';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class StaffService {
   constructor(
     @InjectModel(Membership.name) private readonly membershipModel: Model<Membership>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
+    private readonly auditService: AuditService,
   ) {}
 
   async list(branchId: string): Promise<unknown[]> {
@@ -37,7 +39,7 @@ export class StaffService {
     });
   }
 
-  async create(dto: CreateStaffDto): Promise<unknown> {
+  async create(dto: CreateStaffDto, actorUserId?: string): Promise<unknown> {
     const user = await this.userModel.findOneAndUpdate(
       { email: dto.email.toLowerCase() },
       {
@@ -57,6 +59,16 @@ export class StaffService {
       { returnDocument: 'after', upsert: true },
     );
 
+    await this.auditService.record({
+      action: 'staff.created',
+      actorUserId,
+      branchId: membership.branchId,
+      entityId: String(user._id),
+      entityType: 'user',
+      payload: { role: membership.role },
+      tenantId: membership.tenantId,
+    });
+
     return {
       active: user.active,
       branchId: membership.branchId,
@@ -69,7 +81,7 @@ export class StaffService {
     };
   }
 
-  async update(id: string, dto: UpdateStaffDto): Promise<unknown> {
+  async update(id: string, dto: UpdateStaffDto, actorUserId?: string): Promise<unknown> {
     const membership = await this.membershipModel.findById(id).exec();
     if (!membership) {
       throw new NotFoundException('Staff membership not found');
@@ -89,6 +101,16 @@ export class StaffService {
     if (typeof dto.active === 'boolean') user.active = dto.active;
     await user.save();
 
+    await this.auditService.record({
+      action: 'staff.updated',
+      actorUserId,
+      branchId: membership.branchId,
+      entityId: String(user._id),
+      entityType: 'user',
+      payload: { role: membership.role },
+      tenantId: membership.tenantId,
+    });
+
     return {
       active: user.active,
       branchId: membership.branchId,
@@ -101,8 +123,18 @@ export class StaffService {
     };
   }
 
-  async delete(id: string): Promise<{ success: boolean }> {
-    await this.membershipModel.findByIdAndDelete(id).exec();
+  async delete(id: string, actorUserId?: string): Promise<{ success: boolean }> {
+    const membership = await this.membershipModel.findByIdAndDelete(id).exec();
+    if (membership) {
+      await this.auditService.record({
+        action: 'staff.deleted',
+        actorUserId,
+        branchId: membership.branchId,
+        entityId: membership.userId,
+        entityType: 'user',
+        tenantId: membership.tenantId,
+      });
+    }
     return { success: true };
   }
 }

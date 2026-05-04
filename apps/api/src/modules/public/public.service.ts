@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 
 import { Branch } from '../../database/schemas/branch.schema';
 import { Order } from '../../database/schemas/order.schema';
+import { Payment } from '../../database/schemas/payment.schema';
 import { QrCode } from '../../database/schemas/qr-code.schema';
 import { RestaurantTable } from '../../database/schemas/table.schema';
 import { TableSession } from '../../database/schemas/table-session.schema';
@@ -18,6 +19,7 @@ export class PublicService {
     @InjectModel(RestaurantTable.name) private readonly tableModel: Model<RestaurantTable>,
     @InjectModel(TableSession.name) private readonly sessionModel: Model<TableSession>,
     @InjectModel(Order.name) private readonly orderModel: Model<Order>,
+    @InjectModel(Payment.name) private readonly paymentModel: Model<Payment>,
   ) {}
 
   async getTableContext(qrToken: string): Promise<unknown> {
@@ -132,6 +134,34 @@ export class PublicService {
       .exec();
 
     return orders.map((order) => this.mapOrderStatus(order));
+  }
+
+  async getPaymentForOrder(orderId: string, qrToken: string): Promise<unknown> {
+    if (!qrToken) {
+      throw new BadRequestException('qrToken is required');
+    }
+
+    const [qrCode, order] = await Promise.all([
+      this.qrCodeModel.findOne({ token: qrToken }).lean().exec(),
+      this.orderModel.findById(orderId).lean().exec(),
+    ]);
+
+    if (!qrCode || !order || String(order.tableId) !== String(qrCode.tableId)) {
+      throw new NotFoundException('Payment not found');
+    }
+
+    const payment = await this.paymentModel.findOne({ orderId }).sort({ updatedAt: -1 }).lean().exec();
+    return payment
+      ? {
+          amount: payment.amount,
+          currency: payment.currency,
+          id: String((payment as { _id: unknown })._id),
+          method: payment.method,
+          orderId,
+          provider: payment.provider,
+          status: payment.status,
+        }
+      : null;
   }
 
   private mapOrderStatus(order: Order & { _id: unknown }): unknown {

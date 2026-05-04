@@ -5,21 +5,30 @@ import {
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
+  OnGatewayInit,
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 
 import { SocketAuthService } from '../auth/socket-auth.service';
+import { RealtimeBusService } from '../realtime-bus.service';
 
 @WebSocketGateway({
   cors: {
     origin: '*',
   },
 })
-export class TableSessionGateway implements OnGatewayConnection {
+export class TableSessionGateway implements OnGatewayConnection, OnGatewayInit {
   @WebSocketServer()
   server!: Server;
 
-  constructor(private readonly socketAuthService: SocketAuthService) {}
+  constructor(
+    private readonly socketAuthService: SocketAuthService,
+    private readonly realtimeBus: RealtimeBusService,
+  ) {}
+
+  afterInit(server: Server): void {
+    this.realtimeBus.bindServer(server);
+  }
 
   handleConnection(client: Socket): void {
     const token = client.handshake.auth.token as string | undefined;
@@ -47,4 +56,3 @@ export class TableSessionGateway implements OnGatewayConnection {
     return { joined: true, room };
   }
 }
-

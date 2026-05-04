@@ -7,6 +7,8 @@ import { makeId } from '../../common/utils/id';
 import { Order } from '../../database/schemas/order.schema';
 import { QrCode } from '../../database/schemas/qr-code.schema';
 import { RestaurantTable } from '../../database/schemas/table.schema';
+import { AuditService } from '../../infrastructure/audit/audit.service';
+import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
 import { CreateTableDto, RegenerateQrDto, UpdateTableDto } from './dto';
 
 @Injectable()
@@ -18,6 +20,8 @@ export class TablesService {
     private readonly qrCodeModel: Model<QrCode>,
     @InjectModel(Order.name)
     private readonly orderModel: Model<Order>,
+    private readonly auditService: AuditService,
+    private readonly realtimePublisher: RealtimePublisher,
   ) {}
 
   async list(branchId: string): Promise<unknown[]> {
@@ -61,7 +65,7 @@ export class TablesService {
     });
   }
 
-  async create(dto: CreateTableDto): Promise<RestaurantTable> {
+  async create(dto: CreateTableDto, actorUserId?: string): Promise<RestaurantTable> {
     const table = await this.tableModel.create({
       ...dto,
       capacity: dto.capacity ?? 4,
@@ -75,11 +79,19 @@ export class TablesService {
       token: makeId('qr'),
       version: 1,
     });
+    await this.auditService.record({
+      action: 'table.created',
+      actorUserId,
+      branchId: dto.branchId,
+      entityId: String(table._id),
+      entityType: 'table',
+      tenantId: dto.tenantId,
+    });
 
     return table;
   }
 
-  async update(id: string, dto: UpdateTableDto): Promise<RestaurantTable> {
+  async update(id: string, dto: UpdateTableDto, actorUserId?: string): Promise<RestaurantTable> {
     const table = await this.tableModel
       .findByIdAndUpdate(id, dto, { returnDocument: 'after' })
       .exec();
@@ -88,16 +100,40 @@ export class TablesService {
       throw new NotFoundException('Table not found');
     }
 
+    await Promise.all([
+      this.auditService.record({
+        action: 'table.updated',
+        actorUserId,
+        branchId: table.branchId,
+        entityId: String(table._id),
+        entityType: 'table',
+        tenantId: table.tenantId,
+      }),
+      this.realtimePublisher.publishRealtimeEvent(`branch:${table.branchId}`, 'table.status_changed', {
+        tableId: String(table._id),
+        status: table.status,
+      }),
+    ]);
     return table;
   }
 
-  async delete(id: string): Promise<{ success: boolean }> {
-    await this.tableModel.findByIdAndDelete(id).exec();
+  async delete(id: string, actorUserId?: string): Promise<{ success: boolean }> {
+    const table = await this.tableModel.findByIdAndDelete(id).exec();
     await this.qrCodeModel.deleteMany({ tableId: id }).exec();
+    if (table) {
+      await this.auditService.record({
+        action: 'table.deleted',
+        actorUserId,
+        branchId: table.branchId,
+        entityId: String(table._id),
+        entityType: 'table',
+        tenantId: table.tenantId,
+      });
+    }
     return { success: true };
   }
 
-  async regenerateQr(dto: RegenerateQrDto): Promise<{ token: string; version: number }> {
+  async regenerateQr(dto: RegenerateQrDto, actorUserId?: string): Promise<{ token: string; version: number }> {
     const qrCode = await this.qrCodeModel.findOne({ tableId: dto.tableId }).exec();
 
     if (!qrCode) {
@@ -107,6 +143,14 @@ export class TablesService {
     qrCode.token = makeId('qr');
     qrCode.version += 1;
     await qrCode.save();
+    await this.auditService.record({
+      action: 'table.qr_regenerated',
+      actorUserId,
+      branchId: qrCode.branchId,
+      entityId: qrCode.tableId,
+      entityType: 'table',
+      tenantId: qrCode.tenantId,
+    });
 
     return {
       token: qrCode.token,

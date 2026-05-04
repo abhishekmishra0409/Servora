@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { getLiveOrders, type LiveOrder } from '../../../lib/api-client';
 import { readCmsSettings, writeCmsSettings } from '../../../lib/cms-storage';
+import { formatOrderNumber } from '../../../lib/order-number';
+import { createSocketClient } from '../../../lib/socket';
 
 const money = (value: number): string =>
   new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
@@ -21,6 +23,14 @@ export default function DashboardPage() {
     if (settings.branchId && settings.token) {
       void load(settings.branchId, settings.token);
     }
+    const socket = settings.token ? createSocketClient(settings.token) : null;
+    socket?.on('order.created', () => void load(settings.branchId, settings.token));
+    socket?.on('order.status_updated', () => void load(settings.branchId, settings.token));
+    socket?.on('service_request.created', () => void load(settings.branchId, settings.token));
+    socket?.connect();
+    return () => {
+      socket?.disconnect();
+    };
   }, []);
 
   const kpis = useMemo(() => {
@@ -101,7 +111,7 @@ export default function DashboardPage() {
                     receipt_long
                   </span>
                   <div>
-                    <strong>{order.orderNo}</strong>
+                    <strong>{formatOrderNumber(order.orderNo)}</strong>
                     <p className="muted">
                       Table ···{order.tableId.slice(-4)} - {order.status.replaceAll('_', ' ')}
                     </p>
@@ -140,7 +150,7 @@ export default function DashboardPage() {
                   </span>
                   <div>
                     <strong>Kitchen confirmation</strong>
-                    <p className="muted">{order.orderNo}</p>
+                    <p className="muted">{formatOrderNumber(order.orderNo)}</p>
                   </div>
                   <span className="cms-status">Pending</span>
                 </div>

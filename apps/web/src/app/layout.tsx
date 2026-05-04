@@ -1,15 +1,8 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import { Work_Sans } from 'next/font/google';
 
 import '../app/globals.css';
 import { PwaBootstrap } from '../components/pwa-bootstrap';
-
-const workSans = Work_Sans({
-  display: 'swap',
-  subsets: ['latin'],
-  variable: '--font-work-sans',
-});
 
 export const metadata: Metadata = {
   description: 'Restaurant CMS and QR ordering workspace.',
@@ -27,7 +20,7 @@ export default function RootLayout({ children }: { children: ReactNode }): React
           rel="stylesheet"
         />
       </head>
-      <body className={workSans.variable}>
+      <body>
         <PwaBootstrap />
         {children}
       </body>

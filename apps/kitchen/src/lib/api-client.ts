@@ -9,6 +9,9 @@ const normalizeLocalUrl = (value: string): string => {
 };
 const apiUrl = normalizeLocalUrl(configuredApiUrl);
 const API_BASE_URL = apiUrl.endsWith('/api/v1') ? apiUrl : `${apiUrl}/api/v1`;
+const sessionKey = 'restaurent:kitchen:session';
+const branchKey = 'restaurent:kitchen:branchId';
+let refreshPromise: Promise<string | null> | null = null;
 
 export interface StaffSession {
   accessToken: string;
@@ -45,17 +48,75 @@ interface ApiOptions extends RequestInit {
 
 export const orderId = (order: LiveOrder): string => order.id ?? String(order._id ?? '');
 
-export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
+function readStoredSession(): StaffSession | null {
+  const raw = localStorage.getItem(sessionKey);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as StaffSession;
+  } catch {
+    localStorage.removeItem(sessionKey);
+    return null;
+  }
+}
+
+function clearStoredSession(): void {
+  localStorage.removeItem(sessionKey);
+  localStorage.removeItem(branchKey);
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const session = readStoredSession();
+      if (!session?.refreshToken) {
+        return null;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        body: JSON.stringify({ refreshToken: session.refreshToken }),
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { accessToken?: string; refreshToken?: string }
+        | null;
+
+      if (!response.ok || !payload?.accessToken || !payload.refreshToken) {
+        clearStoredSession();
+        return null;
+      }
+
+      const nextSession = { ...session, accessToken: payload.accessToken, refreshToken: payload.refreshToken };
+      localStorage.setItem(sessionKey, JSON.stringify(nextSession));
+      return payload.accessToken;
+    })().finally(() => {
+      refreshPromise = null;
+    });
+  }
+
+  return refreshPromise;
+}
+
+function requestHeaders(options: ApiOptions, tokenOverride?: string): Headers {
   const headers = new Headers(options.headers);
   headers.set('Accept', 'application/json');
   if (options.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  if (options.token) {
-    headers.set('Authorization', `Bearer ${options.token}`);
+
+  const storedToken = options.token ? readStoredSession()?.accessToken : '';
+  const authToken = tokenOverride ?? storedToken ?? options.token ?? '';
+  if (authToken) {
+    headers.set('Authorization', `Bearer ${authToken}`);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  return headers;
+}
+
+async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => null)) as { message?: string } | T | null;
 
   if (!response.ok) {
@@ -67,6 +128,25 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
   }
 
   return payload as T;
+}
+
+export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers: requestHeaders(options) });
+
+  if (response.status === 401 && options.token) {
+    const nextToken = await refreshAccessToken();
+    if (nextToken) {
+      const retryResponse = await fetch(`${API_BASE_URL}${path}`, {
+        ...options,
+        headers: requestHeaders(options, nextToken),
+      });
+      return parseResponse<T>(retryResponse);
+    }
+
+    window.location.assign('/login');
+  }
+
+  return parseResponse<T>(response);
 }
 
 export const login = (email: string, password: string, branchId?: string): Promise<StaffSession> =>

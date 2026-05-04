@@ -124,6 +124,9 @@
       "GRAD" 0,
       "opsz" 24;
     line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .material-symbols-outlined.filled {
@@ -834,6 +837,317 @@
 
 /* ── Kitchen-specific styles ── */
 @layer components {
+  .kitchen-login-page {
+    align-items: center;
+    background:
+      linear-gradient(135deg, rgba(234, 247, 239, 0.92), rgba(247, 248, 251, 0.96)),
+      #f7f8fb;
+    display: grid;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  .kitchen-login-shell {
+    display: grid;
+    gap: 24px;
+    grid-template-columns: minmax(0, 1.05fr) 430px;
+    margin: 0 auto;
+    max-width: 1120px;
+    width: 100%;
+  }
+
+  .kitchen-login-hero,
+  .kitchen-login-card {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(207, 216, 227, 0.96);
+    border-radius: 14px;
+    box-shadow: 0 18px 48px rgba(17, 28, 45, 0.1);
+  }
+
+  .kitchen-login-hero {
+    background:
+      linear-gradient(135deg, rgba(17, 28, 45, 0.88), rgba(24, 41, 54, 0.8)),
+      url("https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=1400&q=80");
+    background-position: center;
+    background-size: cover;
+    color: #ffffff;
+    display: grid;
+    min-height: 560px;
+    overflow: hidden;
+    padding: 28px;
+    position: relative;
+  }
+
+  .kitchen-login-hero::after {
+    background: linear-gradient(0deg, rgba(7, 18, 28, 0.78), transparent 62%);
+    content: "";
+    inset: 0;
+    position: absolute;
+  }
+
+  .kitchen-login-hero__top,
+  .kitchen-login-hero__content,
+  .kitchen-login-signals {
+    position: relative;
+    z-index: 1;
+  }
+
+  .kitchen-login-hero__top {
+    align-items: center;
+    display: flex;
+    font-size: 14px;
+    font-weight: 800;
+    gap: 10px;
+  }
+
+  .kitchen-login-brand-mark {
+    align-items: center;
+    background: var(--color-surface-container-low);
+    border-radius: 12px;
+    color: var(--color-primary);
+    display: inline-flex;
+    height: 42px;
+    justify-content: center;
+    width: 42px;
+    box-shadow: 0 6px 12px rgba(17,28,45,0.06);
+  }
+
+  /* Ensure the brand icon is centered and sized consistently */
+  .kitchen-login-brand-mark .material-symbols-outlined {
+    font-size: 24px;
+  }
+
+  .kitchen-login-hero__content {
+    align-self: end;
+    max-width: 680px;
+  }
+
+  .kitchen-login-eyebrow {
+    color: var(--color-tertiary-fixed-dim);
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    margin: 0 0 12px;
+    text-transform: uppercase;
+  }
+
+  .kitchen-login-hero h1 {
+    font-size: clamp(40px, 6vw, 68px);
+    font-weight: 900;
+    letter-spacing: 0;
+    line-height: 1;
+    margin: 0;
+    max-width: 740px;
+  }
+
+  .kitchen-login-signals {
+    align-self: end;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .kitchen-login-signals > span {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 10px;
+    display: inline-flex;
+    font-size: 13px;
+    font-weight: 800;
+    gap: 8px;
+    min-height: 54px;
+    padding: 0 12px;
+  }
+
+  .kitchen-login-signals .material-symbols-outlined {
+    color: var(--color-tertiary-fixed-dim);
+    font-size: 20px;
+  }
+
+  .kitchen-login-card {
+    align-self: center;
+    display: grid;
+    gap: 20px;
+    padding: 28px;
+  }
+
+  .kitchen-login-card__header {
+    display: grid;
+    gap: 8px;
+  }
+
+  .kitchen-login-role {
+    align-items: center;
+    background: var(--color-surface-container-low);
+    border: 1px solid var(--color-secondary-fixed-dim);
+    border-radius: 999px;
+    color: var(--color-primary);
+    display: inline-flex;
+    font-size: 12px;
+    font-weight: 900;
+    gap: 8px;
+    justify-self: start;
+    min-height: 34px;
+    padding: 0 12px;
+    text-transform: uppercase;
+  }
+
+  .kitchen-login-role .material-symbols-outlined {
+    font-size: 18px;
+  }
+
+  .kitchen-login-card h2 {
+    color: var(--color-on-surface);
+    font-size: 32px;
+    font-weight: 900;
+    letter-spacing: 0;
+    line-height: 1.08;
+    margin: 6px 0 0;
+  }
+
+  .kitchen-login-card p,
+  .kitchen-login-footer {
+    color: var(--color-secondary);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  .kitchen-login-alert {
+    align-items: flex-start;
+    background: var(--color-error-container);
+    border: 1px solid var(--color-error);
+    border-radius: 10px;
+    color: var(--color-error);
+    display: flex;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .kitchen-login-alert .material-symbols-outlined {
+    flex: 0 0 auto;
+    font-size: 20px;
+  }
+
+  .kitchen-login-form {
+    display: grid;
+    gap: 16px;
+  }
+
+  .kitchen-login-field {
+    color: var(--color-on-surface);
+    display: grid;
+    font-size: 12px;
+    font-weight: 900;
+    gap: 6px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .kitchen-login-field small {
+    color: var(--color-on-secondary-container);
+    font-size: 11px;
+    font-weight: 800;
+    margin-left: 6px;
+  }
+
+  .kitchen-login-input {
+    align-items: center;
+    background: var(--color-surface-container-lowest);
+    border: 1px solid var(--color-surface-dim);
+    border-radius: 10px;
+    display: flex;
+    min-height: 52px;
+    padding: 0 12px;
+  }
+
+  .kitchen-login-input > .material-symbols-outlined {
+    color: var(--color-on-secondary-fixed-variant);
+    flex: 0 0 auto;
+    font-size: 20px;
+    margin-right: 12px;
+  }
+
+  .kitchen-login-input input {
+    background: transparent;
+    border: 0;
+    color: var(--color-on-surface);
+    flex: 1;
+    font-size: 15px;
+    min-height: 48px;
+    min-width: 0;
+    outline: 0;
+    padding: 12px 10px;
+  }
+
+  .kitchen-login-input:focus-within {
+    border-color: var(--color-primary);
+    box-shadow:
+      0 0 0 2px var(--color-surface-container-lowest),
+      0 0 0 5px rgba(141,75,0,0.14);
+    padding-left: 12px; /* ensure inner icon doesn't shift on focus */
+  }
+
+  .kitchen-login-icon-button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: var(--color-on-secondary-fixed-variant);
+    display: inline-flex;
+    height: 36px;
+    justify-content: center;
+    padding: 0;
+    width: 36px;
+  }
+
+  /* Keep the icon button visually flush with input and avoid overflow */
+  .kitchen-login-input > .kitchen-login-icon-button,
+  .kitchen-login-input .kitchen-login-icon-button {
+    margin-left: 8px;
+    height: 36px;
+    width: 36px;
+    flex: 0 0 auto;
+  }
+
+  .kitchen-login-icon-button:hover,
+  .kitchen-login-icon-button:focus-visible {
+    color: var(--color-primary);
+    outline: 0;
+  }
+
+  .kitchen-login-submit {
+    align-items: center;
+    background: var(--color-primary);
+    border: 0;
+    border-radius: 10px;
+    box-shadow: 0 12px 24px rgba(144, 77, 0, 0.18);
+    color: var(--color-on-primary);
+    display: inline-flex;
+    font-size: 13px;
+    font-weight: 900;
+    gap: 8px;
+    justify-content: center;
+    letter-spacing: 0.06em;
+    min-height: 54px;
+    text-transform: uppercase;
+  }
+
+  .kitchen-login-submit:hover:not(:disabled) {
+    background: var(--color-surface-tint);
+  }
+
+  .kitchen-login-submit .material-symbols-outlined {
+    font-size: 19px;
+  }
+
+  .kitchen-login-footer {
+    background: #f0f6ff;
+    border: 1px solid #d8e3fb;
+    border-radius: 10px;
+    font-size: 13px;
+    padding: 12px 14px;
+  }
+
   /* Full-height kanban shell */
   .kitchen-shell {
     display: flex;
@@ -1135,5 +1449,38 @@
   .kitchen-empty .material-symbols-outlined {
     font-size: 32px;
     opacity: 0.4;
+  }
+
+  @media (max-width: 900px) {
+    .kitchen-login-page {
+      align-items: start;
+      padding: 16px;
+    }
+
+    .kitchen-login-shell {
+      grid-template-columns: 1fr;
+    }
+
+    .kitchen-login-hero {
+      min-height: 360px;
+    }
+
+    .kitchen-login-signals {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .kitchen-login-card,
+    .kitchen-login-hero {
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .kitchen-login-hero h1,
+    .kitchen-login-card h2 {
+      font-size: 30px;
+      line-height: 1.1;
+    }
   }
 }

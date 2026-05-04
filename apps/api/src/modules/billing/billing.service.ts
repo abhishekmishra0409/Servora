@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import Stripe from 'stripe';
@@ -40,6 +40,10 @@ export class BillingService {
       ? await this.planModel.findOne({ code: subscription.planCode }).lean().exec()
       : null;
 
+    if (process.env.NODE_ENV === 'production') {
+      throw new ServiceUnavailableException('Stripe checkout is not configured');
+    }
+
     return {
       plan,
       subscription,
@@ -69,6 +73,10 @@ export class BillingService {
           url: session.url,
         };
       }
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      throw new ServiceUnavailableException('Stripe customer portal is not configured');
     }
 
     return {
@@ -110,9 +118,8 @@ export class BillingService {
     provider: 'stripe',
     payload: Record<string, unknown>,
   ): Promise<{ provider: string; updated: boolean }> {
-    const providerSubscriptionId =
-      String(payload.subscriptionId ?? payload.subscription_id ?? payload.id ?? 'unknown');
-    const tenantId = String(payload.tenantId ?? payload.tenant_id ?? 'unknown');
+    const providerSubscriptionId = String(payload.subscriptionId ?? payload.subscription_id ?? payload.id ?? 'unknown');
+    const tenantId = String(payload.tenantId ?? payload.tenant_id ?? payload.client_reference_id ?? 'unknown');
 
     await this.subscriptionModel.findOneAndUpdate(
       { provider, providerSubscriptionId },
@@ -138,6 +145,10 @@ export class BillingService {
   verifyStripeWebhook(payload: Buffer, signature: string | undefined): Record<string, unknown> {
     const secret = this.configService.get<string>('billing.stripe.webhookSecret', '');
     if (!this.stripe || !signature || !secret) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new BadRequestException('Stripe webhook signature verification is not configured');
+      }
+
       const parsed = this.parseWebhookPayload(payload);
 
       return {
@@ -148,13 +159,33 @@ export class BillingService {
     }
 
     const event = this.stripe.webhooks.constructEvent(payload, signature, secret);
+    const object = event.data.object as unknown as Record<string, unknown>;
+    const metadata = typeof object.metadata === 'object' && object.metadata ? object.metadata as Record<string, unknown> : {};
+
     return {
-      customerId: event.data.object && 'customer' in event.data.object ? event.data.object.customer : 'unknown',
+      customerId: typeof object.customer === 'string' ? object.customer : 'unknown',
       id: event.id,
-      status: event.type,
-      subscriptionId:
-        event.data.object && 'id' in event.data.object ? event.data.object.id : 'unknown',
+      orderId: String(metadata.orderId ?? ''),
+      paymentId: String(metadata.paymentId ?? ''),
+      planCode: String(metadata.planCode ?? 'launch'),
+      status: this.mapStripeStatus(event.type),
+      subscriptionId: typeof object.subscription === 'string' ? object.subscription : String(object.id ?? 'unknown'),
+      tenantId: String(metadata.tenantId ?? object.client_reference_id ?? 'unknown'),
     };
+  }
+
+  private mapStripeStatus(eventType: string): string {
+    const statusByEvent: Record<string, string> = {
+      'customer.subscription.created': 'active',
+      'customer.subscription.deleted': 'cancelled',
+      'customer.subscription.paused': 'suspended',
+      'customer.subscription.resumed': 'active',
+      'customer.subscription.updated': 'active',
+      'invoice.payment_failed': 'past_due',
+      'invoice.payment_succeeded': 'active',
+    };
+
+    return statusByEvent[eventType] ?? eventType;
   }
 
   private getPriceId(planCode: string): string {

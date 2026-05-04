@@ -3,12 +3,20 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import type { INestApplication } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
+import { getConnectionToken } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 
 import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/bootstrap';
 
 type ModelClass = { name: string };
+
+const normalizeDbName = (dbName: string): string => {
+  const suffix = Math.abs([...dbName].reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) | 0, 0))
+    .toString(36)
+    .slice(0, 8);
+  return `rst_${suffix}`.slice(0, 38);
+};
 
 const ensureTestEnv = (dbName: string): void => {
   process.env.API_PORT = process.env.API_PORT ?? '0';
@@ -21,7 +29,7 @@ const ensureTestEnv = (dbName: string): void => {
   process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET ?? 'test-refresh-secret';
   process.env.JWT_REFRESH_TTL = process.env.JWT_REFRESH_TTL ?? '7d';
   process.env.MONGODB_URI = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017';
-  process.env.MONGODB_DB_NAME = dbName;
+  process.env.MONGODB_DB_NAME = normalizeDbName(dbName);
   process.env.REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
 };
 
@@ -47,4 +55,9 @@ export const getBaseUrl = (app: INestApplication): string => {
   const server = app.getHttpServer() as { address(): { port: number } };
   const address = server.address();
   return `http://127.0.0.1:${address.port}`;
+};
+
+export const cleanupTestDatabase = async (app: INestApplication): Promise<void> => {
+  const connection = app.get<{ collections: Record<string, { deleteMany(filter: object): Promise<unknown> }> }>(getConnectionToken());
+  await Promise.all(Object.values(connection.collections).map((collection) => collection.deleteMany({})));
 };

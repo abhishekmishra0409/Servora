@@ -11,6 +11,8 @@ import {
   type LiveOrder,
 } from '../../../lib/api-client';
 import { readCmsSettings, writeCmsSettings } from '../../../lib/cms-storage';
+import { formatOrderNumber } from '../../../lib/order-number';
+import { createSocketClient } from '../../../lib/socket';
 
 const statuses = ['pending_confirmation', 'accepted', 'preparing', 'ready'];
 
@@ -31,6 +33,13 @@ export default function OrdersPage() {
     if (settings.branchId && settings.token) {
       void load(settings.branchId, settings.token);
     }
+    const socket = settings.token ? createSocketClient(settings.token) : null;
+    socket?.on('order.created', () => void load(settings.branchId, settings.token));
+    socket?.on('order.status_updated', () => void load(settings.branchId, settings.token));
+    socket?.connect();
+    return () => {
+      socket?.disconnect();
+    };
   }, []);
 
   const grouped = useMemo(
@@ -115,12 +124,12 @@ export default function OrdersPage() {
                   <div className="cms-ticket" key={id}>
                     <div>
                       <div className="cms-ticket__head">
-                        <strong>{order.orderNo}</strong>
+                        <strong>{formatOrderNumber(order.orderNo)}</strong>
                         <span>Table ···{order.tableId.slice(-4)}</span>
                       </div>
                       <ul>
-                        {order.items.map((item) => (
-                          <li key={`${id}-${item.menuItemId}`}>
+                        {order.items.map((item, index) => (
+                          <li key={`${id}-${item.menuItemId}-${index}`}>
                             <span>{item.quantity}x {item.name}</span>
                             <span>{money(item.quantity * item.unitPrice)}</span>
                           </li>

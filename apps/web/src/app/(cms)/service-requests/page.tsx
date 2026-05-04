@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { PageShell } from '../../../components/page-shell';
 import { getCmsServiceRequests, type CmsServiceRequest } from '../../../lib/api-client';
 import { readCmsSettings } from '../../../lib/cms-storage';
+import { createSocketClient } from '../../../lib/socket';
 
 export default function ServiceRequestsPage() {
   const [requests, setRequests] = useState<CmsServiceRequest[]>([]);
@@ -13,12 +14,22 @@ export default function ServiceRequestsPage() {
   useEffect(() => {
     const settings = readCmsSettings();
     if (!settings.branchId || !settings.token) return;
-    void getCmsServiceRequests(settings.branchId, settings.token)
+    const load = (): void => {
+      void getCmsServiceRequests(settings.branchId, settings.token)
       .then((nextRequests) => {
         setRequests(nextRequests);
         setMessage(nextRequests.length ? '' : 'No open service requests.');
       })
       .catch((error: unknown) => setMessage(error instanceof Error ? error.message : 'Could not load service requests.'));
+    };
+    load();
+    const socket = createSocketClient(settings.token);
+    socket.on('service_request.created', load);
+    socket.on('service_request.resolved', load);
+    socket.connect();
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   return (

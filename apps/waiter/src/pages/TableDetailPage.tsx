@@ -12,6 +12,7 @@ import {
   type TableSummary,
 } from '../lib/api-client';
 import { defaultBranchId, readSession } from '../lib/session';
+import { waiterSocket } from '../lib/socket';
 
 const money = (value: number): string =>
   new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
@@ -66,8 +67,16 @@ export function TableDetailPage() {
 
   useEffect(() => {
     void load();
-    const interval = window.setInterval(() => void load(), 15000);
-    return () => window.clearInterval(interval);
+    const interval = window.setInterval(() => void load(), 30000);
+    const socket = session?.accessToken ? waiterSocket(session.accessToken) : null;
+    ['order.created', 'order.status_updated', 'service_request.created', 'service_request.resolved', 'payment.status_updated'].forEach((event) => {
+      socket?.on(event, () => void load());
+    });
+    socket?.connect();
+    return () => {
+      window.clearInterval(interval);
+      socket?.disconnect();
+    };
   }, []);
 
   // Keep URL in sync when user switches table from selector

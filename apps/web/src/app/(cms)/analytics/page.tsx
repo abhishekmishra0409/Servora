@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { PageShell } from '../../../components/page-shell';
 import { getCmsAnalyticsMenu, getCmsAnalyticsOverview, type CmsAnalyticsOverview } from '../../../lib/api-client';
 import { readCmsSettings } from '../../../lib/cms-storage';
+import { createSocketClient } from '../../../lib/socket';
 
 const money = (value: number): string =>
   new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
@@ -17,7 +18,8 @@ export default function AnalyticsPage() {
   useEffect(() => {
     const settings = readCmsSettings();
     if (!settings.branchId || !settings.token) return;
-    void Promise.all([
+    const load = (): void => {
+      void Promise.all([
       getCmsAnalyticsOverview(settings.branchId, settings.token),
       getCmsAnalyticsMenu(settings.branchId, settings.token),
     ])
@@ -27,6 +29,15 @@ export default function AnalyticsPage() {
         setMessage('');
       })
       .catch((error: unknown) => setMessage(error instanceof Error ? error.message : 'Could not load analytics.'));
+    };
+    load();
+    const socket = createSocketClient(settings.token);
+    socket.on('order.created', load);
+    socket.on('order.status_updated', load);
+    socket.connect();
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   const metrics = overview

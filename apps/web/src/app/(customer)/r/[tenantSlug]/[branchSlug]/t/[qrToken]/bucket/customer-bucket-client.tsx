@@ -14,6 +14,7 @@ import {
 } from '@/lib/api-client';
 import { useCustomerRoute } from '@/lib/customer-route';
 import { clearGuestSession, readGuestSession, writeSubmittedOrder } from '@/lib/customer-storage';
+import { createSocketClient } from '@/lib/socket';
 
 const money = (value: number): string =>
   new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
@@ -57,7 +58,8 @@ export function CustomerBucketClient({
     }
 
     let active = true;
-    setGuest(readGuestSession(qrToken) ?? initialGuest);
+    const storedGuest = readGuestSession(qrToken) ?? initialGuest;
+    setGuest(storedGuest);
     refresh().catch((nextError: Error) => {
       if (!active) {
         return;
@@ -66,8 +68,19 @@ export function CustomerBucketClient({
       setNotice('Bucket could not be loaded.');
     });
 
+    const socket = storedGuest?.guestToken ? createSocketClient(storedGuest.guestToken) : null;
+    ['bucket.item_added', 'bucket.item_updated', 'bucket.item_removed', 'order.created', 'payment.status_updated'].forEach((event) => {
+      socket?.on(event, () => {
+        if (active) {
+          void refresh();
+        }
+      });
+    });
+    socket?.connect();
+
     return () => {
       active = false;
+      socket?.disconnect();
     };
   }, [initialGuest, qrToken]);
 

@@ -8,7 +8,9 @@ import {
   type OrderStatusSnapshot,
 } from '@/lib/api-client';
 import { useCustomerRoute } from '@/lib/customer-route';
-import { readSubmittedOrders } from '@/lib/customer-storage';
+import { readGuestSession, readSubmittedOrders } from '@/lib/customer-storage';
+import { formatOrderNumber } from '@/lib/order-number';
+import { createSocketClient } from '@/lib/socket';
 
 const steps = ['pending_confirmation', 'accepted', 'preparing', 'ready', 'served', 'closed'];
 
@@ -45,11 +47,6 @@ const money = (value: number): string =>
 
 const etaFor = (status: string): { end: number; progress: number; start: number } =>
   etaByStatus[status] ?? { end: 15, progress: 10, start: 12 };
-
-const formatOrderNumber = (orderNo: string): string => {
-  const shortCode = orderNo.split('-').at(-1);
-  return shortCode ? `#${shortCode}` : `#${orderNo}`;
-};
 
 const lineTotal = (item: OrderStatusSnapshot['items'][number]): number => {
   const addons = item.addonSnapshots.reduce((total, addon) => total + addon.priceDelta, 0);
@@ -114,11 +111,17 @@ export default function CustomerStatusPage() {
     };
 
     void load();
-    const interval = window.setInterval(() => void load(), 10000);
+    const interval = window.setInterval(() => void load(), 30000);
+    const guest = readGuestSession(qrToken);
+    const socket = guest?.guestToken ? createSocketClient(guest.guestToken) : null;
+    socket?.on('order.status_updated', () => void load());
+    socket?.on('payment.status_updated', () => void load());
+    socket?.connect();
 
     return () => {
       active = false;
       window.clearInterval(interval);
+      socket?.disconnect();
     };
   }, [qrToken]);
 

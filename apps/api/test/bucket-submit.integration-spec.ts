@@ -5,7 +5,7 @@ import type { Connection } from 'mongoose';
 
 import { getOrderCount, seedRestaurantFixture } from './helpers/fixtures';
 import { postJson } from './helpers/http';
-import { createTestApp, getBaseUrl } from './helpers/test-app';
+import { cleanupTestDatabase, createTestApp, getBaseUrl } from './helpers/test-app';
 
 describe('bucket submit workflow', () => {
   let app: INestApplication;
@@ -18,7 +18,7 @@ describe('bucket submit workflow', () => {
 
   afterAll(async () => {
     if (connection) {
-      await connection.dropDatabase();
+      await cleanupTestDatabase(app);
       await connection.close();
     }
     if (app) {
@@ -69,6 +69,7 @@ describe('bucket submit workflow', () => {
       },
     );
     expect(firstSubmit.data.status).toBe(OrderStatus.Accepted);
+    expect(firstSubmit.data.orderNo).toBe('ORD-0001');
 
     const emptySubmit = await postJson<{ message: string }>(
       baseUrl,
@@ -105,6 +106,7 @@ describe('bucket submit workflow', () => {
       },
     );
     expect(secondSubmit.data.status).toBe(OrderStatus.Accepted);
+    expect(secondSubmit.data.orderNo).toBe('ORD-0002');
     expect(secondSubmit.data.orderId).not.toBe(firstSubmit.data.orderId);
     expect(await getOrderCount(app)).toBe(2);
   });

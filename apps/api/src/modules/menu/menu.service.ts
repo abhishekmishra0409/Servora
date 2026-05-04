@@ -4,6 +4,9 @@ import { Model } from 'mongoose';
 
 import { MenuCategory } from '../../database/schemas/menu-category.schema';
 import { MenuItem } from '../../database/schemas/menu-item.schema';
+import { AuditService } from '../../infrastructure/audit/audit.service';
+import { QueueService } from '../../infrastructure/queue/queue.service';
+import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
 import { CreateCategoryDto, CreateMenuItemDto, UpdateCategoryDto, UpdateMenuItemDto } from './dto';
 
 type LeanMenuItem = MenuItem & { _id?: unknown; media?: { url?: unknown } };
@@ -13,17 +16,21 @@ export class MenuService {
   constructor(
     @InjectModel(MenuCategory.name) private readonly categoryModel: Model<MenuCategory>,
     @InjectModel(MenuItem.name) private readonly itemModel: Model<MenuItem>,
-  ) {}
+    private readonly auditService: AuditService,
+    private readonly queueService: QueueService,
+    private readonly realtimePublisher: RealtimePublisher,
+  ) { }
 
   async getPublicMenu(tenantId: string, branchId: string): Promise<{ categories: MenuCategory[]; items: unknown[] }> {
     const [categories, items] = await Promise.all([
       this.categoryModel.find({ tenantId, $or: [{ branchId }, { branchId: { $exists: false } }] }).lean().exec(),
       this.itemModel.find({ tenantId, branchId, available: true }).lean<LeanMenuItem[]>().exec(),
     ]);
+    const availableItems = items.filter((item) => this.isScheduleActive(item.schedules));
 
     return {
       categories,
-      items: items.map((item) => ({
+      items: availableItems.map((item) => ({
         ...item,
         id: String(item._id ?? ''),
         imageUrl: typeof item.media?.url === 'string' ? item.media.url : undefined,
@@ -36,10 +43,25 @@ export class MenuService {
   }
 
   async createCategory(dto: CreateCategoryDto): Promise<MenuCategory> {
-    return this.categoryModel.create({
+    const category = await this.categoryModel.create({
       ...dto,
       visible: true,
     });
+    await this.auditService.record({
+      action: 'menu_category.created',
+      branchId: dto.branchId,
+      entityId: String(category._id),
+      entityType: 'menu_category',
+      tenantId: dto.tenantId,
+    });
+    if (category.branchId) {
+      await this.realtimePublisher.publishRealtimeEvent(`branch:${category.branchId}`, 'menu.changed', {
+        branchId: category.branchId,
+        categoryId: String(category._id),
+        changeType: 'created',
+      });
+    }
+    return category;
   }
 
   async updateCategory(id: string, dto: UpdateCategoryDto): Promise<MenuCategory> {
@@ -51,17 +73,47 @@ export class MenuService {
       throw new NotFoundException('Category not found');
     }
 
+    await this.auditService.record({
+      action: 'menu_category.updated',
+      branchId: category.branchId,
+      entityId: String(category._id),
+      entityType: 'menu_category',
+      tenantId: category.tenantId,
+    });
+    if (category.branchId) {
+      await this.realtimePublisher.publishRealtimeEvent(`branch:${category.branchId}`, 'menu.changed', {
+        branchId: category.branchId,
+        categoryId: String(category._id),
+        changeType: 'updated',
+      });
+    }
     return category;
   }
 
   async deleteCategory(id: string): Promise<{ success: boolean }> {
-    await this.categoryModel.findByIdAndDelete(id).exec();
+    const category = await this.categoryModel.findByIdAndDelete(id).exec();
     await this.itemModel.updateMany({ categoryId: id }, { available: false }).exec();
+    if (category) {
+      await this.auditService.record({
+        action: 'menu_category.deleted',
+        branchId: category.branchId,
+        entityId: String(category._id),
+        entityType: 'menu_category',
+        tenantId: category.tenantId,
+      });
+      if (category.branchId) {
+        await this.realtimePublisher.publishRealtimeEvent(`branch:${category.branchId}`, 'menu.changed', {
+          branchId: category.branchId,
+          categoryId: String(category._id),
+          changeType: 'deleted',
+        });
+      }
+    }
     return { success: true };
   }
 
   async createItem(dto: CreateMenuItemDto): Promise<MenuItem> {
-    return this.itemModel.create({
+    const item = await this.itemModel.create({
       ...dto,
       allergens: dto.allergens ?? [],
       available: dto.available ?? true,
@@ -70,6 +122,19 @@ export class MenuService {
       schedules: dto.schedules ?? [],
       variants: dto.variants ?? [],
     });
+    await this.auditService.record({
+      action: 'menu_item.created',
+      branchId: dto.branchId,
+      entityId: String(item._id),
+      entityType: 'menu_item',
+      tenantId: dto.tenantId,
+    });
+    await this.realtimePublisher.publishRealtimeEvent(`branch:${item.branchId}`, 'menu.changed', {
+      branchId: item.branchId,
+      changeType: 'created',
+      menuItemId: String(item._id),
+    });
+    return item;
   }
 
   async listItems(branchId: string): Promise<MenuItem[]> {
@@ -87,6 +152,7 @@ export class MenuService {
   }
 
   async updateItem(id: string, dto: UpdateMenuItemDto): Promise<MenuItem> {
+    const previous = await this.itemModel.findById(id).lean<LeanMenuItem>().exec();
     const item = await this.itemModel
       .findByIdAndUpdate(id, dto, { returnDocument: 'after' })
       .exec();
@@ -95,11 +161,88 @@ export class MenuService {
       throw new NotFoundException('Menu item not found');
     }
 
+    const previousUrl = typeof previous?.media?.url === 'string' ? previous.media.url : '';
+    const nextUrl = typeof (item.media as { url?: unknown } | undefined)?.url === 'string' ? String((item.media as { url?: unknown }).url) : '';
+    if (previousUrl && previousUrl !== nextUrl) {
+      await this.queueService.enqueueMediaJob(
+        'media.cleanup_cloudinary_asset',
+        { menuItemId: String(item._id), url: previousUrl },
+        { jobId: `media-cleanup:${String(item._id)}:${previousUrl}` },
+      );
+    }
+    await this.auditService.record({
+      action: 'menu_item.updated',
+      branchId: item.branchId,
+      entityId: String(item._id),
+      entityType: 'menu_item',
+      tenantId: item.tenantId,
+    });
+    await this.realtimePublisher.publishRealtimeEvent(`branch:${item.branchId}`, 'menu.changed', {
+      branchId: item.branchId,
+      changeType: 'updated',
+      menuItemId: String(item._id),
+    });
     return item;
   }
 
   async deleteItem(id: string): Promise<{ success: boolean }> {
-    await this.itemModel.findByIdAndDelete(id).exec();
+    const item = await this.itemModel.findByIdAndDelete(id).exec();
+    const mediaUrl = typeof (item?.media as { url?: unknown } | undefined)?.url === 'string' ? String((item?.media as { url?: unknown }).url) : '';
+    if (item) {
+      if (mediaUrl) {
+        await this.queueService.enqueueMediaJob(
+          'media.cleanup_cloudinary_asset',
+          { menuItemId: String(item._id), url: mediaUrl },
+          { jobId: `media-cleanup:${String(item._id)}:${mediaUrl}` },
+        );
+      }
+      await this.auditService.record({
+        action: 'menu_item.deleted',
+        branchId: item.branchId,
+        entityId: String(item._id),
+        entityType: 'menu_item',
+        tenantId: item.tenantId,
+      });
+      await this.realtimePublisher.publishRealtimeEvent(`branch:${item.branchId}`, 'menu.changed', {
+        branchId: item.branchId,
+        changeType: 'deleted',
+        menuItemId: String(item._id),
+      });
+    }
     return { success: true };
+  }
+
+  private isScheduleActive(schedules: { days?: string[]; endTime?: string; startTime?: string }[] | undefined): boolean {
+    if (!schedules?.length) {
+      return true;
+    }
+
+    const now = new Date();
+    const day = now.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    const dayShort = day.slice(0, 3); // e.g. monday -> mon
+    const minutes = now.getHours() * 60 + now.getMinutes();
+
+    return schedules.some((schedule) => {
+      const days = (schedule.days ?? []).map((value) => value.toLowerCase());
+      // Accept both full weekday names (monday) and 3-letter abbreviations (mon)
+      if (days.length && !days.includes(day) && !days.includes(dayShort)) {
+        return false;
+      }
+
+      const start = this.parseTime(schedule.startTime);
+      const end = this.parseTime(schedule.endTime);
+      return start === null || end === null || (minutes >= start && minutes <= end);
+    });
+  }
+
+  private parseTime(value: string | undefined): number | null {
+    if (!value) {
+      return null;
+    }
+    const [hours, minutes] = value.split(':').map(Number) as [number | undefined, number | undefined];
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+      return null;
+    }
+    return (hours ?? 0) * 60 + (minutes ?? 0);
   }
 }

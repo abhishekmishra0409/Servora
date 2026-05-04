@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev --hostname 0.0.0.0",
+    "dev": "next dev --webpack --hostname 0.0.0.0",
     "lint": "eslint \"src/**/*.ts\" \"src/**/*.tsx\" \"tests/**/*.ts\"",
     "start": "next start",
     "test": "vitest run \"src/**/*.test.ts\" \"src/**/*.spec.ts\" \"src/**/*.test.tsx\" \"src/**/*.spec.tsx\" --passWithNoTests",

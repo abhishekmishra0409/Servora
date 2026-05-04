@@ -27,6 +27,8 @@
     "seed": "npm run build -w apps/api && tsx scripts/seed-all.ts",
     "create:admin": "npm run build -w apps/api && tsx scripts/create-admin.ts",
     "sync-indexes": "npm run build -w apps/api && tsx scripts/sync-indexes.ts",
+    "backup:mongo": "tsx scripts/backup-mongo.ts",
+    "restore:mongo": "tsx scripts/restore-mongo.ts",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "verify": "tsx scripts/verify-local.ts"

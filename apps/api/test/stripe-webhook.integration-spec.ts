@@ -4,7 +4,7 @@ import type { Connection, Model } from 'mongoose';
 
 import { IdempotencyKey } from '../src/database/schemas/idempotency-key.schema';
 import { seedRestaurantFixture } from './helpers/fixtures';
-import { createTestApp, getBaseUrl } from './helpers/test-app';
+import { cleanupTestDatabase, createTestApp, getBaseUrl } from './helpers/test-app';
 
 describe('stripe webhook dedupe', () => {
   let app: INestApplication;
@@ -19,7 +19,7 @@ describe('stripe webhook dedupe', () => {
 
   afterAll(async () => {
     if (connection) {
-      await connection.dropDatabase();
+      await cleanupTestDatabase(app);
       await connection.close();
     }
     if (app) {

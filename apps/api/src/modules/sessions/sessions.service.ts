@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import type { GuestJwtPayload, GuestSession, BranchServiceMode } from '@restaurent/shared';
-import { OrderStatus } from '@restaurent/shared';
+import { OrderStatus, SOCKET_EVENTS } from '@restaurent/shared';
 import { ClientSession, Connection, Model } from 'mongoose';
 
 import { makeId } from '../../common/utils/id';
@@ -15,6 +15,9 @@ import { Order } from '../../database/schemas/order.schema';
 import { QrCode } from '../../database/schemas/qr-code.schema';
 import { TableSession } from '../../database/schemas/table-session.schema';
 import { RestaurantTable } from '../../database/schemas/table.schema';
+import { AuditService } from '../../infrastructure/audit/audit.service';
+import { QueueService } from '../../infrastructure/queue/queue.service';
+import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
 import {
   AddBucketItemDto,
   CreateGuestSessionDto,
@@ -36,6 +39,9 @@ export class SessionsService {
     @InjectConnection() private readonly connection: Connection,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly auditService: AuditService,
+    private readonly queueService: QueueService,
+    private readonly realtimePublisher: RealtimePublisher,
   ) {}
 
   async createGuestSession(dto: CreateGuestSessionDto): Promise<GuestSession> {
@@ -90,6 +96,18 @@ export class SessionsService {
       joinedAt: new Date(),
     });
     await session.save();
+    await Promise.all([
+      this.realtimePublisher.publishRealtimeEvent(`tableSession:${String(session._id)}`, SOCKET_EVENTS.participantJoined, {
+        alias: dto.alias,
+        participantId,
+        tableSessionId: String(session._id),
+      }),
+      this.realtimePublisher.publishRealtimeEvent(`branch:${session.branchId}`, SOCKET_EVENTS.participantJoined, {
+        alias: dto.alias,
+        participantId,
+        tableSessionId: String(session._id),
+      }),
+    ]);
 
     const payload: GuestJwtPayload = {
       alias: dto.alias,
@@ -151,6 +169,12 @@ export class SessionsService {
     this.applyTotals(session);
     session.markModified('bucket');
     await session.save();
+    await this.realtimePublisher.publishRealtimeEvent(`tableSession:${String(session._id)}`, SOCKET_EVENTS.bucketItemAdded, {
+      itemId: bucketItem.id,
+      quantity: bucketItem.quantity,
+      tableSessionId: String(session._id),
+      total: session.bucket.totals.grandTotal,
+    });
 
     return session;
   }
@@ -180,6 +204,12 @@ export class SessionsService {
     this.applyTotals(session);
     session.markModified('bucket');
     await session.save();
+    await this.realtimePublisher.publishRealtimeEvent(`tableSession:${String(session._id)}`, SOCKET_EVENTS.bucketItemUpdated, {
+      itemId,
+      quantity: bucketItem.quantity,
+      tableSessionId: String(session._id),
+      total: session.bucket.totals.grandTotal,
+    });
 
     return session;
   }
@@ -196,6 +226,12 @@ export class SessionsService {
     this.applyTotals(session);
     session.markModified('bucket');
     await session.save();
+    await this.realtimePublisher.publishRealtimeEvent(`tableSession:${String(session._id)}`, SOCKET_EVENTS.bucketItemRemoved, {
+      itemId,
+      quantity: 0,
+      tableSessionId: String(session._id),
+      total: session.bucket.totals.grandTotal,
+    });
 
     return session;
   }
@@ -303,6 +339,41 @@ export class SessionsService {
     tableSession.markModified('bucket');
     await tableSession.save(mongoSession ? { session: mongoSession } : undefined);
 
+    await Promise.all([
+      this.queueService.enqueueNotificationJob(
+        'notifications.order_created',
+        {
+          branchId: createdOrder.branchId,
+          orderId: String(createdOrder._id),
+          status: createdOrder.status,
+          tableSessionId: String(tableSession._id),
+          tenantId: createdOrder.tenantId,
+        },
+        { jobId: `order-created:${String(createdOrder._id)}` },
+      ),
+      this.queueService.enqueueAnalyticsJob(
+        'analytics.refresh_branch_rollup',
+        { branchId: createdOrder.branchId, tenantId: createdOrder.tenantId },
+        { jobId: `analytics-refresh:${createdOrder.branchId}:${Date.now()}` },
+      ),
+      this.realtimePublisher.publishRealtimeEvent(`branch:${createdOrder.branchId}`, SOCKET_EVENTS.orderCreated, {
+        orderId: String(createdOrder._id),
+        status: createdOrder.status,
+      }),
+      this.realtimePublisher.publishRealtimeEvent(`tableSession:${String(tableSession._id)}`, SOCKET_EVENTS.orderCreated, {
+        orderId: String(createdOrder._id),
+        status: createdOrder.status,
+      }),
+      this.auditService.record({
+        action: 'order.created',
+        branchId: createdOrder.branchId,
+        entityId: String(createdOrder._id),
+        entityType: 'order',
+        payload: { orderNo: createdOrder.orderNo, status: createdOrder.status },
+        tenantId: createdOrder.tenantId,
+      }),
+    ]);
+
     return this.mapOrderResponse(createdOrder);
   }
 
@@ -339,7 +410,7 @@ export class SessionsService {
         ...(item.notes ? { notes: item.notes } : {}),
         ...(item.variantLabel ? { variantLabel: item.variantLabel } : {}),
       })),
-      orderNo: `${tableSession.branchId}-${String(nextCounterValue).padStart(4, '0')}`,
+      orderNo: `ORD-${String(nextCounterValue).padStart(4, '0')}`,
       serviceMode,
       source: dto.paymentMethod ?? 'pay_later',
       status,

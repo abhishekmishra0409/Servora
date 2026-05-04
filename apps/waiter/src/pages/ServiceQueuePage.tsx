@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { documentId, getServiceRequests, getTables, resolveServiceRequest, type ServiceRequest, type TableSummary } from '../lib/api-client';
 import { defaultBranchId, readSession } from '../lib/session';
+import { waiterSocket } from '../lib/socket';
 
 const requestIcon = (requestType: string): string => {
   const normalized = requestType.toLowerCase();
@@ -39,8 +40,15 @@ export function ServiceQueuePage() {
 
   useEffect(() => {
     void load();
-    const interval = window.setInterval(() => void load(), 12000);
-    return () => window.clearInterval(interval);
+    const interval = window.setInterval(() => void load(), 30000);
+    const socket = session?.accessToken ? waiterSocket(session.accessToken) : null;
+    socket?.on('service_request.created', () => void load());
+    socket?.on('service_request.resolved', () => void load());
+    socket?.connect();
+    return () => {
+      window.clearInterval(interval);
+      socket?.disconnect();
+    };
   }, []);
 
   async function resolve(request: ServiceRequest): Promise<void> {

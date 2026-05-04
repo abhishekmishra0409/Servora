@@ -7,9 +7,10 @@ import { resolveEnvFiles } from './env-files';
 import { OrderGateway } from './gateways/order.gateway';
 import { ServiceRequestGateway } from './gateways/service-request.gateway';
 import { TableSessionGateway } from './gateways/table-session.gateway';
+import { RealtimeBusService } from './realtime-bus.service';
 
 @Module({
   imports: [ConfigModule.forRoot({ envFilePath: resolveEnvFiles(), isGlobal: true }), JwtModule.register({})],
-  providers: [SocketAuthService, TableSessionGateway, OrderGateway, ServiceRequestGateway],
+  providers: [SocketAuthService, RealtimeBusService, TableSessionGateway, OrderGateway, ServiceRequestGateway],
 })
 export class AppModule {}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { confirmOrder, getLiveOrders, orderId, rejectOrder, type LiveOrder } from '../lib/api-client';
 import { defaultBranchId, readSession } from '../lib/session';
+import { waiterSocket } from '../lib/socket';
 
 const money = (value: number): string =>
   new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
@@ -32,8 +33,15 @@ export function PendingOrdersPage() {
 
   useEffect(() => {
     void load();
-    const interval = window.setInterval(() => void load(), 12000);
-    return () => window.clearInterval(interval);
+    const interval = window.setInterval(() => void load(), 30000);
+    const socket = session?.accessToken ? waiterSocket(session.accessToken) : null;
+    socket?.on('order.created', () => void load());
+    socket?.on('order.status_updated', () => void load());
+    socket?.connect();
+    return () => {
+      window.clearInterval(interval);
+      socket?.disconnect();
+    };
   }, []);
 
   async function act(order: LiveOrder, action: 'confirm' | 'reject'): Promise<void> {

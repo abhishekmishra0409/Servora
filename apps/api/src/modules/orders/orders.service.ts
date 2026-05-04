@@ -1,13 +1,21 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { OrderStatus } from '@restaurent/shared';
+import { OrderStatus, SOCKET_EVENTS } from '@restaurent/shared';
 import { Model } from 'mongoose';
 
 import { Order } from '../../database/schemas/order.schema';
+import { AuditService } from '../../infrastructure/audit/audit.service';
+import { QueueService } from '../../infrastructure/queue/queue.service';
+import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
 
 @Injectable()
 export class OrdersService {
-  constructor(@InjectModel(Order.name) private readonly orderModel: Model<Order>) {}
+  constructor(
+    @InjectModel(Order.name) private readonly orderModel: Model<Order>,
+    private readonly auditService: AuditService,
+    private readonly queueService: QueueService,
+    private readonly realtimePublisher: RealtimePublisher,
+  ) {}
 
   async getLive(branchId: string): Promise<Order[]> {
     return this.orderModel
@@ -53,10 +61,11 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
+    await this.afterStatusChange(order, userId, 'order.confirmed');
     return order;
   }
 
-  async reject(id: string): Promise<Order> {
+  async reject(id: string, userId?: string): Promise<Order> {
     const order = await this.orderModel
       .findByIdAndUpdate(id, { status: OrderStatus.Rejected }, { returnDocument: 'after' })
       .exec();
@@ -65,10 +74,11 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
+    await this.afterStatusChange(order, userId, 'order.rejected');
     return order;
   }
 
-  async updateStatus(id: string, status: OrderStatus): Promise<Order> {
+  async updateStatus(id: string, status: OrderStatus, userId?: string): Promise<Order> {
     const order = await this.orderModel
       .findByIdAndUpdate(id, { status }, { returnDocument: 'after' })
       .exec();
@@ -77,6 +87,50 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
+    await this.afterStatusChange(order, userId, 'order.status_updated');
     return order;
+  }
+
+  private async afterStatusChange(order: Order & { _id?: unknown }, actorUserId: string | undefined, action: string): Promise<void> {
+    const orderId = String(order._id ?? '');
+    await Promise.all([
+      this.queueService.enqueueNotificationJob(
+        'notifications.order_status_updated',
+        {
+          branchId: order.branchId,
+          orderId,
+          status: order.status,
+          tableSessionId: order.tableSessionId,
+          tenantId: order.tenantId,
+        },
+        { jobId: `order-status:${orderId}:${order.status}` },
+      ),
+      this.queueService.enqueueAnalyticsJob(
+        'analytics.refresh_branch_rollup',
+        { branchId: order.branchId, tenantId: order.tenantId },
+        { jobId: `analytics-refresh:${order.branchId}:${Date.now()}` },
+      ),
+      this.realtimePublisher.publishRealtimeEvent(`branch:${order.branchId}`, SOCKET_EVENTS.orderStatusUpdated, {
+        orderId,
+        status: order.status,
+      }),
+      this.realtimePublisher.publishRealtimeEvent(`order:${orderId}`, SOCKET_EVENTS.orderStatusUpdated, {
+        orderId,
+        status: order.status,
+      }),
+      this.realtimePublisher.publishRealtimeEvent(`tableSession:${order.tableSessionId}`, SOCKET_EVENTS.orderStatusUpdated, {
+        orderId,
+        status: order.status,
+      }),
+      this.auditService.record({
+        action,
+        actorUserId,
+        branchId: order.branchId,
+        entityId: orderId,
+        entityType: 'order',
+        payload: { status: order.status },
+        tenantId: order.tenantId,
+      }),
+    ]);
   }
 }

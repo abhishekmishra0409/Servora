@@ -12,8 +12,7 @@ export class HealthController {
   }
 
   @Get('ready')
-  ready(): { ready: boolean } {
+  ready(): Promise<{ checks: Record<string, boolean>; ready: boolean }> {
     return this.healthService.getReady();
   }
 }
-

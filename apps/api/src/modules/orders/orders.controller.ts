@@ -6,37 +6,45 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { StaffJwtGuard } from '../../common/guards/staff-jwt.guard';
+import { AccessService } from '../../infrastructure/access/access.service';
 import { OrdersService } from './orders.service';
 
 @Controller('orders')
 @UseGuards(StaffJwtGuard, RolesGuard)
 @Roles(UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Kitchen)
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly accessService: AccessService,
+    private readonly ordersService: OrdersService,
+  ) {}
 
   @Get('live')
-  getLive(@Query('branchId') branchId: string): Promise<unknown> {
+  async getLive(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
+    await this.accessService.assertBranchAccess(user, branchId);
     return this.ordersService.getLive(branchId);
   }
 
   @Get(':id')
-  getById(@Param('id') id: string): Promise<unknown> {
+  async getById(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
+    await this.accessService.assertOrderAccess(user, id);
     return this.ordersService.getById(id);
   }
 
   @Post(':id/confirm')
-  confirm(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
+  async confirm(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
+    await this.accessService.assertOrderAccess(user, id);
     return this.ordersService.confirm(id, user.sub);
   }
 
   @Post(':id/reject')
-  reject(@Param('id') id: string): Promise<unknown> {
-    return this.ordersService.reject(id);
+  async reject(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
+    await this.accessService.assertOrderAccess(user, id);
+    return this.ordersService.reject(id, user.sub);
   }
 
   @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body('status') status: OrderStatus): Promise<unknown> {
-    return this.ordersService.updateStatus(id, status);
+  async updateStatus(@Param('id') id: string, @Body('status') status: OrderStatus, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
+    await this.accessService.assertOrderAccess(user, id);
+    return this.ordersService.updateStatus(id, status, user.sub);
   }
 }
-
