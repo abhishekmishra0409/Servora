@@ -19,7 +19,9 @@ export class Tenant {
 
   @Prop({ default: 'Asia/Kolkata' })
   defaultTimezone!: string;
+
+  @Prop({ type: [String], default: [] })
+  enabledFeatures!: string[];
 }
 
 export const TenantSchema = SchemaFactory.createForClass(Tenant);
-

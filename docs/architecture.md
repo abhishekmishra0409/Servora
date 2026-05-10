@@ -2,18 +2,21 @@
 
 ```mermaid
 flowchart LR
-  CustomerPWA[Customer PWA] --> API
-  CMS[CMS] --> API
-  Waiter --> API
-  Kitchen --> API
+  CustomerPWA[Customer PWA] --> Web[Unified Web App]
+  Staff[Staff Workspace: CMS / Waiter / Kitchen] --> Web
+  Web --> API
   API --> Mongo[(MongoDB)]
   API --> Redis[(Redis)]
-  API --> Realtime
-  API --> Worker
-  Realtime --> Redis
-  Worker --> Redis
-  Worker --> Mongo
+  API --> SocketIO[Socket.IO Gateways]
+  API --> Workers[Embedded BullMQ Workers]
+  SocketIO --> Redis
+  Workers --> Redis
+  Workers --> Mongo
 ```
 
-The architecture keeps transactional writes in the API, fanout in the realtime service, and slow or retried work inside BullMQ workers.
+The active runtime has two Node.js applications: `apps/api` and `apps/web`.
 
+- `apps/api` owns REST APIs, Socket.IO realtime, and embedded BullMQ workers.
+- `apps/web` owns the unified staff workspace and public customer QR/PWA flows.
+- `packages/shared` owns shared roles, permissions, event names, and contracts.
+- `apps/realtime`, `apps/worker`, `apps/waiter`, and `apps/kitchen` remain in GitHub as archived reference code only.

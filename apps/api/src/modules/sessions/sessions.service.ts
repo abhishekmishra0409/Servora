@@ -16,6 +16,7 @@ import { QrCode } from '../../database/schemas/qr-code.schema';
 import { TableSession } from '../../database/schemas/table-session.schema';
 import { RestaurantTable } from '../../database/schemas/table.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
+import { AccessService } from '../../infrastructure/access/access.service';
 import { QueueService } from '../../infrastructure/queue/queue.service';
 import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
 import {
@@ -40,6 +41,7 @@ export class SessionsService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly auditService: AuditService,
+    private readonly accessService: AccessService,
     private readonly queueService: QueueService,
     private readonly realtimePublisher: RealtimePublisher,
   ) {}
@@ -58,6 +60,7 @@ export class SessionsService {
     if (!qrCode) {
       throw new NotFoundException('QR token not found');
     }
+    await this.accessService.assertTenantActive(String(qrCode.tenantId));
 
     let session = await this.sessionModel
       .findOne({
@@ -136,6 +139,7 @@ export class SessionsService {
   }
 
   async addBucketItem(user: GuestJwtPayload, dto: AddBucketItemDto): Promise<TableSession> {
+    await this.accessService.assertTenantActive(user.tenantId);
     const [session, item] = await Promise.all([
       this.sessionModel.findById(user.tableSessionId).exec(),
       this.itemModel.findById(dto.menuItemId).exec(),
@@ -184,6 +188,7 @@ export class SessionsService {
     itemId: string,
     dto: UpdateBucketItemDto,
   ): Promise<TableSession> {
+    await this.accessService.assertTenantActive(user.tenantId);
     const session = await this.sessionModel.findById(user.tableSessionId).exec();
 
     if (!session) {
@@ -215,6 +220,7 @@ export class SessionsService {
   }
 
   async removeBucketItem(user: GuestJwtPayload, itemId: string): Promise<TableSession> {
+    await this.accessService.assertTenantActive(user.tenantId);
     const session = await this.sessionModel.findById(user.tableSessionId).exec();
 
     if (!session) {
@@ -237,6 +243,7 @@ export class SessionsService {
   }
 
   async submitBucket(user: GuestJwtPayload, dto: SubmitBucketDto): Promise<{ orderId: string; orderNo: string; status: OrderStatus }> {
+    await this.accessService.assertTenantActive(user.tenantId);
     const mongoSession = await this.connection.startSession();
 
     try {

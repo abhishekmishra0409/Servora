@@ -19,28 +19,28 @@ export class PaymentsController {
   ) {}
 
   @Post('orders/:id/bill-request')
-  @Roles(UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Waiter, UserRole.Cashier)
   async requestBill(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertOrderAccess(user, id);
     return this.paymentsService.requestBill(id, user.sub);
   }
 
   @Post('payments/checkout-session')
-  @Roles(UserRole.Owner, UserRole.Manager, UserRole.Cashier)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Cashier)
   async createCheckoutSession(@Body() dto: CreatePaymentCheckoutDto, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertOrderAccess(user, dto.orderId);
     return this.paymentsService.createCheckoutSession(dto);
   }
 
   @Get('payments/:id')
-  @Roles(UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Waiter, UserRole.Cashier)
   async getById(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertPaymentAccess(user, id);
     return this.paymentsService.getById(id);
   }
 
   @Post('payments/:id/mark-cash-paid')
-  @Roles(UserRole.Owner, UserRole.Manager, UserRole.Cashier)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Cashier)
   async markCashPaid(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertPaymentAccess(user, id);
     return this.paymentsService.markCashPaid(id, user.sub);

@@ -10,7 +10,14 @@ import { TenantsService } from './tenants.service';
 
 @Controller('tenants')
 @UseGuards(StaffJwtGuard, RolesGuard)
-@Roles(UserRole.PlatformAdmin, UserRole.Owner)
+@Roles(
+  UserRole.PlatformAdmin,
+  UserRole.Owner,
+  UserRole.Manager,
+  UserRole.Waiter,
+  UserRole.Kitchen,
+  UserRole.Cashier,
+)
 export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 

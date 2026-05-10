@@ -18,6 +18,14 @@ const API_BASE_URL = apiUrl ? (apiUrl.endsWith('/api/v1') ? apiUrl : `${apiUrl}/
 const cmsTokenKey = 'restaurent:cms:accessToken';
 const cmsRefreshTokenKey = 'restaurent:cms:refreshToken';
 
+const makeIdempotencyKey = (scope: string): string => {
+  const randomValue =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${scope}:${randomValue}`;
+};
+
 export interface BucketItem {
   addons: { id: string; label: string; priceDelta: number }[];
   addedByParticipantId: string;
@@ -194,6 +202,7 @@ export interface CmsTenant {
   _id?: string;
   defaultCurrency: string;
   defaultTimezone: string;
+  enabledFeatures?: string[];
   id?: string;
   legalName: string;
   slug: string;
@@ -212,8 +221,94 @@ export interface CmsBranch {
 }
 
 export interface CmsBillingSummary {
-  plan: { active: boolean; code: string; monthlyPrice: number; name: string } | null;
+  paymentRequired?: boolean;
+  plan: CmsSubscriptionPlan | null;
+  plans?: CmsSubscriptionPlan[];
   subscription: { planCode: string; provider: string; renewsAt?: string; status: string; tenantId: string } | null;
+}
+
+export interface CmsSubscriptionPlan {
+  _id?: string;
+  active: boolean;
+  badge?: string;
+  branchLimit?: number;
+  code: string;
+  currency?: string;
+  description?: string;
+  employeeLimit?: number;
+  id?: string;
+  interval?: string;
+  monthlyBillLimit?: number;
+  monthlyPrice: number;
+  name: string;
+  perks?: string[];
+  sortOrder?: number;
+  stripePriceId?: string;
+  stripeProductId?: string;
+  tableLimit?: number;
+  visible?: boolean;
+}
+
+export interface CmsSuperAdminSubscription {
+  _id?: string;
+  id?: string;
+  planCode: string;
+  provider: string;
+  providerCustomerId?: string;
+  providerSubscriptionId?: string;
+  renewsAt?: string;
+  status: string;
+  tenantId: string;
+  trialEndsAt?: string;
+}
+
+export interface CmsSuperAdminTenantSummary {
+  plan: CmsSubscriptionPlan | null;
+  subscription: CmsSuperAdminSubscription | null;
+  tenant: CmsTenant & { createdAt?: string; updatedAt?: string };
+}
+
+export interface CmsSuperAdminTenantBusiness {
+  annualizedRevenue: number;
+  auditEntryCount: number;
+  branchCount: number;
+  currentMrr: number;
+  employeeCount: number;
+  enabledFeatureCount: number;
+  lifetimeValue: number;
+  planName: string;
+  renewsAt?: string;
+  restaurantAverageOrderValue: number;
+  restaurantOrderCount: number;
+  restaurantRevenue: number;
+  restaurantRevenueThisMonth: number;
+  restaurantThisMonthOrderCount: number;
+  subscriptionStatus: string;
+}
+
+export interface CmsSuperAdminTenantEmployee {
+  active: boolean;
+  branchId?: string;
+  branchName: string;
+  email: string;
+  id: string;
+  lastActive?: string;
+  name: string;
+  role: string;
+  userId: string;
+}
+
+export interface CmsSuperAdminTenantDetail extends CmsSuperAdminTenantSummary {
+  auditLogPagination?: {
+    limit: number;
+    page: number;
+    total: number;
+    totalPages: number;
+  };
+  auditLogs?: CmsAuditLog[];
+  branches?: CmsBranch[];
+  business?: CmsSuperAdminTenantBusiness;
+  employees?: CmsSuperAdminTenantEmployee[];
 }
 
 export interface CmsFloor {
@@ -287,7 +382,9 @@ const clearCmsAuth = (): void => {
   window.localStorage.removeItem(cmsTokenKey);
   window.localStorage.removeItem(cmsRefreshTokenKey);
   window.localStorage.removeItem('restaurent:cms:branchId');
+  window.localStorage.removeItem('restaurent:cms:role');
   window.localStorage.removeItem('restaurent:cms:tenantId');
+  window.localStorage.removeItem('restaurent:cms:userId');
 };
 
 async function refreshCmsAccessToken(): Promise<string | null> {
@@ -469,6 +566,17 @@ export const loginStaff = (email: string, password: string, branchId?: string): 
     method: 'POST',
   });
 
+export const changeCmsPassword = (
+  currentPassword: string,
+  newPassword: string,
+  token: string,
+): Promise<{ success: boolean }> =>
+  apiRequest<{ success: boolean }>('/auth/change-password', {
+    body: JSON.stringify({ currentPassword, newPassword }),
+    method: 'POST',
+    token,
+  });
+
 export const getLiveOrders = (branchId: string, token: string): Promise<LiveOrder[]> =>
   apiRequest<LiveOrder[]>(`/orders/live?branchId=${encodeURIComponent(branchId)}`, { token });
 
@@ -598,6 +706,9 @@ export const regenerateCmsQr = (tableId: string, token: string): Promise<{ token
 export const getCmsServiceRequests = (branchId: string, token: string): Promise<CmsServiceRequest[]> =>
   apiRequest<CmsServiceRequest[]>(`/service-requests?branchId=${encodeURIComponent(branchId)}`, { token });
 
+export const resolveServiceRequest = (id: string, token: string): Promise<CmsServiceRequest> =>
+  apiRequest<CmsServiceRequest>(`/service-requests/${id}/resolve`, { method: 'PATCH', token });
+
 export const getCmsFloors = (branchId: string, token: string): Promise<CmsFloor[]> =>
   apiRequest<CmsFloor[]>(`/cms/floors?branchId=${encodeURIComponent(branchId)}`, { token });
 
@@ -681,6 +792,116 @@ export const updateCmsBranch = (id: string, body: Partial<CmsBranch>, token: str
 
 export const getCmsBillingSummary = (tenantId: string, token: string): Promise<CmsBillingSummary> =>
   apiRequest<CmsBillingSummary>(`/billing/summary?tenantId=${encodeURIComponent(tenantId)}`, { token });
+
+export const getBillingPlans = (token: string): Promise<CmsSubscriptionPlan[]> =>
+  apiRequest<CmsSubscriptionPlan[]>('/billing/plans', { token });
+
+export const createBillingCheckoutSession = (
+  tenantId: string,
+  planCode: string,
+  token: string,
+): Promise<{ provider: string; url: string }> =>
+  apiRequest<{ provider: string; url: string }>('/billing/checkout-session', {
+    body: JSON.stringify({ planCode, tenantId }),
+    headers: { 'Idempotency-Key': makeIdempotencyKey(`billing-checkout:${tenantId}:${planCode}`) },
+    method: 'POST',
+    token,
+  });
+
+export const createBillingCustomerPortal = (
+  tenantId: string,
+  token: string,
+): Promise<{ provider: string; url: string }> =>
+  apiRequest<{ provider: string; url: string }>('/billing/customer-portal', {
+    body: JSON.stringify({ tenantId }),
+    method: 'POST',
+    token,
+  });
+
+export const getSuperAdminTenants = (token: string): Promise<CmsSuperAdminTenantSummary[]> =>
+  apiRequest<CmsSuperAdminTenantSummary[]>('/super-admin/tenants', { token });
+
+export const createSuperAdminTenant = (
+  body: {
+    defaultCurrency?: string;
+    defaultTimezone?: string;
+    enabledFeatures?: string[];
+    legalName: string;
+    ownerEmail: string;
+    ownerName?: string;
+    ownerPassword: string;
+    slug?: string;
+    status?: string;
+  },
+  token: string,
+): Promise<CmsSuperAdminTenantDetail> =>
+  apiRequest<CmsSuperAdminTenantDetail>('/super-admin/tenants', {
+    body: JSON.stringify(body),
+    method: 'POST',
+    token,
+  });
+
+export const getSuperAdminTenant = (
+  id: string,
+  token: string,
+  options: { auditLimit?: number; auditPage?: number } = {},
+): Promise<CmsSuperAdminTenantDetail> => {
+  const query = new URLSearchParams();
+  if (options.auditLimit) query.set('auditLimit', String(options.auditLimit));
+  if (options.auditPage) query.set('auditPage', String(options.auditPage));
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiRequest<CmsSuperAdminTenantDetail>(`/super-admin/tenants/${encodeURIComponent(id)}${suffix}`, { token });
+};
+
+export const updateSuperAdminTenant = (
+  id: string,
+  body: Partial<Pick<CmsTenant, 'defaultCurrency' | 'defaultTimezone' | 'legalName' | 'slug' | 'status'>>,
+  token: string,
+): Promise<CmsSuperAdminTenantDetail> =>
+  apiRequest<CmsSuperAdminTenantDetail>(`/super-admin/tenants/${encodeURIComponent(id)}`, {
+    body: JSON.stringify(body),
+    method: 'PATCH',
+    token,
+  });
+
+export const getSuperAdminPlans = (token: string): Promise<CmsSubscriptionPlan[]> =>
+  apiRequest<CmsSubscriptionPlan[]>('/super-admin/plans', { token });
+
+export const updateSuperAdminPlanSettings = (
+  code: string,
+  body: Partial<Pick<
+    CmsSubscriptionPlan,
+    'badge' | 'branchLimit' | 'description' | 'employeeLimit' | 'monthlyBillLimit' | 'perks' | 'sortOrder' | 'tableLimit' | 'visible'
+  >>,
+  token: string,
+): Promise<CmsSubscriptionPlan> =>
+  apiRequest<CmsSubscriptionPlan>(`/super-admin/plans/${encodeURIComponent(code)}/settings`, {
+    body: JSON.stringify(body),
+    method: 'PATCH',
+    token,
+  });
+
+export const updateSuperAdminTenantStatus = (
+  id: string,
+  status: string,
+  token: string,
+): Promise<CmsSuperAdminTenantDetail> =>
+  apiRequest<CmsSuperAdminTenantDetail>(`/super-admin/tenants/${encodeURIComponent(id)}/status`, {
+    body: JSON.stringify({ status }),
+    method: 'PATCH',
+    token,
+  });
+
+export const updateSuperAdminTenantFeatures = (
+  id: string,
+  enabledFeatures: string[],
+  token: string,
+): Promise<CmsSuperAdminTenantDetail> =>
+  apiRequest<CmsSuperAdminTenantDetail>(`/super-admin/tenants/${encodeURIComponent(id)}/features`, {
+    body: JSON.stringify({ enabledFeatures }),
+    method: 'PATCH',
+    token,
+  });
 
 export const documentId = (value: { _id?: unknown; id?: string }): string =>
   value.id ?? String(value._id ?? '');

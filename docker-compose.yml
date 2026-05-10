@@ -42,32 +42,6 @@ services:
     ports:
       - '4000:4000'
 
-  realtime:
-    build:
-      context: .
-      dockerfile: apps/realtime/Dockerfile
-    env_file:
-      - .env
-    depends_on:
-      mongo:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    ports:
-      - '4001:4001'
-
-  worker:
-    build:
-      context: .
-      dockerfile: apps/worker/Dockerfile
-    env_file:
-      - .env
-    depends_on:
-      mongo:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
   web:
     build:
       context: .
@@ -80,31 +54,6 @@ services:
     ports:
       - '3000:3000'
 
-  waiter:
-    build:
-      context: .
-      dockerfile: apps/waiter/Dockerfile
-    env_file:
-      - .env
-    depends_on:
-      api:
-        condition: service_started
-    ports:
-      - '4173:4173'
-
-  kitchen:
-    build:
-      context: .
-      dockerfile: apps/kitchen/Dockerfile
-    env_file:
-      - .env
-    depends_on:
-      api:
-        condition: service_started
-    ports:
-      - '4174:4174'
-
 volumes:
   mongo-data:
   redis-data:
-

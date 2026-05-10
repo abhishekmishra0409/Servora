@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "description": "Multi-tenant restaurant SaaS monorepo starter",
   "workspaces": [
-    "apps/*",
+    "apps/api",
+    "apps/web",
     "packages/*"
   ],
   "engines": {
@@ -12,17 +13,18 @@
     "npm": ">=11.0.0"
   },
   "scripts": {
-    "dev": "concurrently -k -n api,realtime,worker,web,waiter,kitchen -c blue,green,yellow,magenta,cyan,red \"npm:dev:api\" \"npm:dev:realtime\" \"npm:dev:worker\" \"npm:dev:web\" \"npm:dev:waiter\" \"npm:dev:kitchen\"",
+    "dev": "node scripts/two-app-runtime.mjs dev",
     "dev:api": "npm run dev -w apps/api",
-    "dev:realtime": "npm run dev -w apps/realtime",
-    "dev:worker": "npm run dev -w apps/worker",
     "dev:web": "npm run dev -w apps/web",
-    "dev:waiter": "npm run dev -w apps/waiter",
-    "dev:kitchen": "npm run dev -w apps/kitchen",
-    "build": "npm run build -w packages/shared && npm run build -w apps/api && npm run build -w apps/realtime && npm run build -w apps/worker && npm run build -w apps/web && npm run build -w apps/waiter && npm run build -w apps/kitchen",
-    "lint": "npm run lint -w packages/shared && npm run lint -w apps/api && npm run lint -w apps/realtime && npm run lint -w apps/worker && npm run lint -w apps/web && npm run lint -w apps/waiter && npm run lint -w apps/kitchen",
-    "typecheck": "npm run build -w packages/shared && npm run typecheck -w apps/api && npm run typecheck -w apps/realtime && npm run typecheck -w apps/worker && npm run typecheck -w apps/web && npm run typecheck -w apps/waiter && npm run typecheck -w apps/kitchen",
-    "test": "npm run test -w packages/shared && npm run test -w apps/api && npm run test -w apps/waiter && npm run test -w apps/kitchen",
+    "build": "node scripts/two-app-runtime.mjs build",
+    "build:api": "npm run build -w packages/shared && npm run build -w apps/api",
+    "build:web": "npm run build -w packages/shared && npm run build -w apps/web",
+    "start": "node scripts/two-app-runtime.mjs start",
+    "start:api": "npm run start -w apps/api",
+    "start:web": "npm run start -w apps/web",
+    "lint": "npm run lint -w packages/shared && npm run lint -w apps/api && npm run lint -w apps/web",
+    "typecheck": "npm run build -w packages/shared && npm run typecheck -w apps/api && npm run typecheck -w apps/web",
+    "test": "npm run test -w packages/shared && npm run test -w apps/api && npm run test -w apps/web",
     "test:e2e": "npm run test:e2e -w apps/web",
     "seed": "npm run build -w apps/api && tsx scripts/seed-all.ts",
     "create:admin": "npm run build -w apps/api && tsx scripts/create-admin.ts",

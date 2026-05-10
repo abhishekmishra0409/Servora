@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { OrderStatus, TableStatus } from '@restaurent/shared';
@@ -9,6 +9,7 @@ import { QrCode } from '../../database/schemas/qr-code.schema';
 import { RestaurantTable } from '../../database/schemas/table.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
 import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
+import { BillingService } from '../billing/billing.service';
 import { CreateTableDto, RegenerateQrDto, UpdateTableDto } from './dto';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class TablesService {
     @InjectModel(Order.name)
     private readonly orderModel: Model<Order>,
     private readonly auditService: AuditService,
+    private readonly billingService: BillingService,
     private readonly realtimePublisher: RealtimePublisher,
   ) {}
 
@@ -66,6 +68,7 @@ export class TablesService {
   }
 
   async create(dto: CreateTableDto, actorUserId?: string): Promise<RestaurantTable> {
+    await this.assertTableLimit(dto.tenantId);
     const table = await this.tableModel.create({
       ...dto,
       capacity: dto.capacity ?? 4,
@@ -176,5 +179,18 @@ export class TablesService {
     }
 
     return currentStatus;
+  }
+
+  private async assertTableLimit(tenantId: string): Promise<void> {
+    const plan = await this.billingService.getTenantBillingPlan(tenantId);
+    const tableLimit = Number(plan?.tableLimit ?? 0);
+    if (!tableLimit) {
+      return;
+    }
+
+    const tableCount = await this.tableModel.countDocuments({ tenantId }).exec();
+    if (tableCount >= tableLimit) {
+      throw new BadRequestException(`Your subscription allows up to ${tableLimit} tables.`);
+    }
   }
 }

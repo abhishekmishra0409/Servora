@@ -4,7 +4,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { StaffJwtGuard } from '../../common/guards/staff-jwt.guard';
 import type { StaffJwtPayload, StaffSession } from '@restaurent/shared';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshDto } from './dto';
+import { ChangePasswordDto, LoginDto, RefreshDto } from './dto';
 
 @Controller('auth')
 export class AuthController {
@@ -27,9 +27,17 @@ export class AuthController {
   }
 
   @UseGuards(StaffJwtGuard)
+  @Post('change-password')
+  changePassword(
+    @Body() dto: ChangePasswordDto,
+    @CurrentUser() user: StaffJwtPayload,
+  ): Promise<{ success: boolean }> {
+    return this.authService.changePassword(user.sub, dto);
+  }
+
+  @UseGuards(StaffJwtGuard)
   @Get('me')
   me(@CurrentUser() user: StaffJwtPayload): Promise<{ email: string; id: string; name: string }> {
     return this.authService.getMe(user.sub);
   }
 }
-

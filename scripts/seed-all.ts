@@ -1,6 +1,7 @@
 /// <reference types="node" />
 import {
   BranchServiceMode,
+  DEFAULT_TENANT_FEATURES,
   OrderStatus,
   ServiceRequestStatus,
   TableStatus,
@@ -42,6 +43,17 @@ async function seed(): Promise<void> {
     },
     { returnDocument: 'after', upsert: true },
   );
+  const superAdmin = await User.findOneAndUpdate(
+    { email: process.env.SEED_SUPER_ADMIN_EMAIL ?? 'superadmin@servora.test' },
+    {
+      $set: {
+        active: true,
+        name: 'Super Admin',
+        passwordHash: await hashValue(process.env.SEED_SUPER_ADMIN_PASSWORD ?? 'SuperAdminPass123!'),
+      },
+    },
+    { returnDocument: 'after', upsert: true },
+  );
 
   const tenant = await Tenant.findOneAndUpdate(
     { slug: 'harbor-grill' },
@@ -49,6 +61,7 @@ async function seed(): Promise<void> {
       $set: {
         defaultCurrency: 'INR',
         defaultTimezone: 'Asia/Kolkata',
+        enabledFeatures: DEFAULT_TENANT_FEATURES,
         legalName: 'Harbor Grill Hospitality LLP',
         status: 'active',
       },
@@ -126,6 +139,16 @@ async function seed(): Promise<void> {
   );
 
   await Promise.all([
+    Membership.findOneAndUpdate(
+      { branchId: String(branch._id), tenantId: String(tenant._id), userId: String(superAdmin._id) },
+      { $set: { role: UserRole.SuperAdmin } },
+      { returnDocument: 'after', upsert: true },
+    ),
+    Membership.findOneAndUpdate(
+      { branchId: String(branch._id), tenantId: String(tenant._id), userId: String(platformAdmin._id) },
+      { $set: { role: UserRole.PlatformAdmin } },
+      { returnDocument: 'after', upsert: true },
+    ),
     Membership.findOneAndUpdate(
       { branchId: String(branch._id), tenantId: String(tenant._id), userId: String(owner._id) },
       { $set: { role: UserRole.Owner } },
@@ -451,12 +474,13 @@ async function seed(): Promise<void> {
     }
   }
 
+  console.log('[seed] created/updated super admin:', superAdmin.email);
   console.log('[seed] created/updated platform admin:', platformAdmin.email);
   console.log('[seed] created/updated tenant:', tenant.slug);
   console.log('[seed] created/updated branch:', branch.slug);
-  console.log('[seed] branchId for admin UI:', String(branch._id));
-  console.log('[seed] sample staff: owner@harborgrill.test / waiter@harborgrill.test / kitchen@harborgrill.test');
-  console.log('[seed] passwords: OwnerPass123! / WaiterPass123! / KitchenPass123!');
+  console.log('[seed] branchId for staff login:', String(branch._id));
+  console.log('[seed] staff logins: superadmin@servora.test / platform@example.com / owner@harborgrill.test / manager@harborgrill.test / waiter@harborgrill.test / kitchen@harborgrill.test / cashier@harborgrill.test');
+  console.log('[seed] passwords: SuperAdminPass123! / ChangeMe123! / OwnerPass123! / ManagerPass123! / WaiterPass123! / KitchenPass123! / CashierPass123!');
 
   await disconnectFromDatabase();
 }

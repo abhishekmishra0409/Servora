@@ -6,4 +6,5 @@ export * from './menu-types';
 export * from './permissions';
 export * from './route-constants';
 export * from './socket-events';
+export * from './tenant-features';
 export * from './utils';

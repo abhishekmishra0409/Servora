@@ -22,6 +22,7 @@ const money = (value: number): string =>
 export default function OrdersPage() {
   const [branchId, setBranchId] = useState('');
   const [token, setToken] = useState('');
+  const [role, setRole] = useState('');
   const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('Sign in to load live orders from the database.');
@@ -29,6 +30,7 @@ export default function OrdersPage() {
   useEffect(() => {
     const settings = readCmsSettings();
     setBranchId(settings.branchId);
+    setRole(settings.role);
     setToken(settings.token);
     if (settings.branchId && settings.token) {
       void load(settings.branchId, settings.token);
@@ -87,6 +89,10 @@ export default function OrdersPage() {
     }
   }
 
+  const canConfirmOrders = ['platform_admin', 'owner', 'manager', 'waiter'].includes(role);
+  const canMoveKitchenStatus = ['platform_admin', 'owner', 'manager'].includes(role);
+  const canMarkServed = ['platform_admin', 'owner', 'manager', 'waiter'].includes(role);
+
   return (
     <main>
       <div className="page-shell">
@@ -138,7 +144,7 @@ export default function OrdersPage() {
                     </div>
                     <strong className="cms-ticket__total">{money(order.grandTotal)}</strong>
                     <div className="action-row">
-                      {order.status === 'pending_confirmation' ? (
+                      {canConfirmOrders && order.status === 'pending_confirmation' ? (
                         <>
                           <button disabled={busy === id} onClick={() => void act(order, 'confirm')} type="button">
                             Confirm
@@ -153,17 +159,17 @@ export default function OrdersPage() {
                           </button>
                         </>
                       ) : null}
-                      {order.status === 'accepted' ? (
+                      {canMoveKitchenStatus && order.status === 'accepted' ? (
                         <button disabled={busy === id} onClick={() => void act(order, 'preparing')} type="button">
                           Preparing
                         </button>
                       ) : null}
-                      {order.status === 'preparing' ? (
+                      {canMoveKitchenStatus && order.status === 'preparing' ? (
                         <button disabled={busy === id} onClick={() => void act(order, 'ready')} type="button">
                           Ready
                         </button>
                       ) : null}
-                      {order.status === 'ready' ? (
+                      {canMarkServed && order.status === 'ready' ? (
                         <button disabled={busy === id} onClick={() => void act(order, 'served')} type="button">
                           Served
                         </button>

@@ -1,4 +1,4 @@
-import { IsBoolean, IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 import { UserRole } from '@restaurent/shared';
 
 export class CreateStaffDto {
@@ -18,7 +18,7 @@ export class CreateStaffDto {
   @MinLength(8)
   password!: string;
 
-  @IsString()
+  @IsEnum(UserRole)
   role!: UserRole;
 }
 
@@ -28,7 +28,7 @@ export class UpdateStaffDto {
   name?: string;
 
   @IsOptional()
-  @IsString()
+  @IsEnum(UserRole)
   role?: UserRole;
 
   @IsOptional()

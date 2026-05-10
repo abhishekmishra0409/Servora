@@ -12,7 +12,7 @@ import { FloorsService } from './floors.service';
 
 @Controller('cms/floors')
 @UseGuards(StaffJwtGuard, RolesGuard)
-@Roles(UserRole.Owner, UserRole.Manager)
+@Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager)
 export class FloorsController {
   constructor(
     private readonly accessService: AccessService,

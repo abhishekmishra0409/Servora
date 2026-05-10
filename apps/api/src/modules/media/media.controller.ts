@@ -8,7 +8,7 @@ import { MediaService } from './media.service';
 
 @Controller('media')
 @UseGuards(StaffJwtGuard, RolesGuard)
-@Roles(UserRole.Owner, UserRole.Manager)
+@Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager)
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
 
@@ -17,4 +17,3 @@ export class MediaController {
     return this.mediaService.signUpload(folder);
   }
 }
-

@@ -8,6 +8,7 @@ export const PERMISSIONS = {
   menuRead: 'menu.read',
   orderManage: 'orders.manage',
   orderRead: 'orders.read',
+  platformManage: 'platform.manage',
   serviceRequestManage: 'service-requests.manage',
   settingsManage: 'settings.manage',
   staffManage: 'staff.manage',
@@ -17,6 +18,7 @@ export const PERMISSIONS = {
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
 const rolePermissionMap: Record<UserRole, Permission[]> = {
+  [UserRole.SuperAdmin]: Object.values(PERMISSIONS),
   [UserRole.PlatformAdmin]: Object.values(PERMISSIONS),
   [UserRole.Owner]: Object.values(PERMISSIONS),
   [UserRole.Manager]: [
@@ -40,4 +42,3 @@ const rolePermissionMap: Record<UserRole, Permission[]> = {
 
 export const hasPermission = (role: UserRole, permission: Permission): boolean =>
   rolePermissionMap[role].includes(permission);
-

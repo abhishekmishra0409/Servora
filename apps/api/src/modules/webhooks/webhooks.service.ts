@@ -83,7 +83,9 @@ export class WebhooksService {
       return;
     }
 
-    const status = String(payload.status ?? '').includes('failed') ? PaymentStatus.Failed : PaymentStatus.Captured;
+    const rawStatus = String(payload.status ?? '').toLowerCase();
+    const failedStatuses = ['canceled', 'cancelled', 'failed', 'incomplete_expired', 'past_due', 'suspended', 'unpaid'];
+    const status = failedStatuses.some((item) => rawStatus.includes(item)) ? PaymentStatus.Failed : PaymentStatus.Captured;
     const payment = await this.paymentModel
       .findByIdAndUpdate(paymentId, { status }, { returnDocument: 'after' })
       .exec();

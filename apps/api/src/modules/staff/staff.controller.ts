@@ -12,7 +12,7 @@ import { CreateStaffDto, UpdateStaffDto } from './dto';
 
 @Controller('cms/staff')
 @UseGuards(StaffJwtGuard, RolesGuard)
-@Roles(UserRole.Owner, UserRole.Manager)
+@Roles(UserRole.PlatformAdmin, UserRole.Owner)
 export class StaffController {
   constructor(
     private readonly accessService: AccessService,
@@ -28,13 +28,13 @@ export class StaffController {
   @Post()
   async create(@Body() dto: CreateStaffDto, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertBranchAccess(user, dto.branchId);
-    return this.staffService.create(dto, user.sub);
+    return this.staffService.create(dto, user);
   }
 
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateStaffDto, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertStaffMembershipAccess(user, id);
-    return this.staffService.update(id, dto, user.sub);
+    return this.staffService.update(id, dto, user);
   }
 
   @Delete(':id')

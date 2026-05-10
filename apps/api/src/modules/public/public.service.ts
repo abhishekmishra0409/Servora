@@ -9,6 +9,7 @@ import { QrCode } from '../../database/schemas/qr-code.schema';
 import { RestaurantTable } from '../../database/schemas/table.schema';
 import { TableSession } from '../../database/schemas/table-session.schema';
 import { Tenant } from '../../database/schemas/tenant.schema';
+import { AccessService } from '../../infrastructure/access/access.service';
 
 @Injectable()
 export class PublicService {
@@ -20,6 +21,7 @@ export class PublicService {
     @InjectModel(TableSession.name) private readonly sessionModel: Model<TableSession>,
     @InjectModel(Order.name) private readonly orderModel: Model<Order>,
     @InjectModel(Payment.name) private readonly paymentModel: Model<Payment>,
+    private readonly accessService: AccessService,
   ) {}
 
   async getTableContext(qrToken: string): Promise<unknown> {
@@ -50,6 +52,7 @@ export class PublicService {
     if (!tenant || !branch || !table) {
       throw new NotFoundException('Table context not found');
     }
+    await this.accessService.assertTenantActive(String((tenant as { _id: unknown })._id));
 
     return {
       branch: {
@@ -99,6 +102,7 @@ export class PublicService {
     if (!qrCode || !order || String(order.tableId) !== String(qrCode.tableId)) {
       throw new NotFoundException('Order not found');
     }
+    await this.accessService.assertTenantActive(String(qrCode.tenantId));
 
     return this.mapOrderStatus(order);
   }
@@ -113,6 +117,7 @@ export class PublicService {
     if (!qrCode) {
       throw new NotFoundException('QR token not found');
     }
+    await this.accessService.assertTenantActive(String(qrCode.tenantId));
 
     const session = await this.sessionModel
       .findOne({
@@ -149,6 +154,7 @@ export class PublicService {
     if (!qrCode || !order || String(order.tableId) !== String(qrCode.tableId)) {
       throw new NotFoundException('Payment not found');
     }
+    await this.accessService.assertTenantActive(String(qrCode.tenantId));
 
     const payment = await this.paymentModel.findOne({ orderId }).sort({ updatedAt: -1 }).lean().exec();
     return payment

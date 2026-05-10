@@ -11,6 +11,7 @@ import { TableSession } from '../../database/schemas/table-session.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
 import { QueueService } from '../../infrastructure/queue/queue.service';
 import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
+import { BillingService } from '../billing/billing.service';
 import { CreatePaymentCheckoutDto } from './dto';
 
 @Injectable()
@@ -20,6 +21,7 @@ export class PaymentsService {
     @InjectModel(Payment.name) private readonly paymentModel: Model<Payment>,
     @InjectModel(TableSession.name) private readonly tableSessionModel: Model<TableSession>,
     private readonly auditService: AuditService,
+    private readonly billingService: BillingService,
     private readonly configService: ConfigService,
     private readonly queueService: QueueService,
     private readonly realtimePublisher: RealtimePublisher,
@@ -27,6 +29,10 @@ export class PaymentsService {
 
   async requestBill(orderId: string, actorUserId: string): Promise<Payment> {
     const order = await this.findOrder(orderId);
+    const existingPayment = await this.paymentModel.findOne({ orderId }).exec();
+    if (!existingPayment) {
+      await this.assertMonthlyBillLimit(order.tenantId);
+    }
     const payment = await this.paymentModel.findOneAndUpdate(
       { orderId },
       {
@@ -69,6 +75,10 @@ export class PaymentsService {
   async createCheckoutSession(dto: CreatePaymentCheckoutDto): Promise<{ paymentId: string; provider: string; url: string }> {
     const order = await this.findOrder(dto.orderId);
     const provider = dto.provider ?? 'stripe';
+    const existingPayment = await this.paymentModel.findOne({ orderId: dto.orderId, provider }).exec();
+    if (!existingPayment) {
+      await this.assertMonthlyBillLimit(order.tenantId);
+    }
     const payment = await this.paymentModel.findOneAndUpdate(
       { orderId: dto.orderId, provider },
       {
@@ -198,6 +208,24 @@ export class PaymentsService {
 
     if (!openOrders) {
       await this.tableSessionModel.findByIdAndUpdate(tableSessionId, { closedAt: new Date(), status: 'closed' }).exec();
+    }
+  }
+
+  private async assertMonthlyBillLimit(tenantId: string): Promise<void> {
+    const plan = await this.billingService.getTenantBillingPlan(tenantId);
+    const monthlyBillLimit = Number(plan?.monthlyBillLimit ?? 0);
+    if (!monthlyBillLimit) {
+      return;
+    }
+
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const billCount = await this.paymentModel
+      .countDocuments({ tenantId, createdAt: { $gte: startOfMonth } })
+      .exec();
+    if (billCount >= monthlyBillLimit) {
+      throw new BadRequestException(`Your subscription allows up to ${monthlyBillLimit} generated bills per month.`);
     }
   }
 }

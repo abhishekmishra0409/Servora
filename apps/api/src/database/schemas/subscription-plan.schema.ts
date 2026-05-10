@@ -8,15 +8,41 @@ export class SubscriptionPlan {
   @Prop({ required: true, unique: true })
   code!: string;
 
-  @Prop({ required: true })
-  name!: string;
+  @Prop()
+  name?: string;
 
-  @Prop({ required: true })
-  monthlyPrice!: number;
+  @Prop()
+  monthlyPrice?: number;
 
   @Prop({ default: true })
   active!: boolean;
+
+  @Prop()
+  badge?: string;
+
+  @Prop()
+  description?: string;
+
+  @Prop({ default: true })
+  visible!: boolean;
+
+  @Prop({ default: 0 })
+  sortOrder!: number;
+
+  @Prop({ default: 0 })
+  employeeLimit!: number;
+
+  @Prop({ default: 0 })
+  branchLimit!: number;
+
+  @Prop({ default: 0 })
+  tableLimit!: number;
+
+  @Prop({ default: 0 })
+  monthlyBillLimit!: number;
+
+  @Prop({ type: [String], default: [] })
+  perks!: string[];
 }
 
 export const SubscriptionPlanSchema = SchemaFactory.createForClass(SubscriptionPlan);
-

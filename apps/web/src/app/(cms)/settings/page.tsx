@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { ChangePasswordForm } from '../../../components/change-password-form';
 import { PageShell } from '../../../components/page-shell';
 import { documentId, getCmsBranches, getCmsTenants, updateCmsBranch, type CmsBranch, type CmsTenant } from '../../../lib/api-client';
 import { readCmsSettings } from '../../../lib/cms-storage';
@@ -11,10 +12,12 @@ export default function SettingsPage() {
   const [tenant, setTenant] = useState<CmsTenant | null>(null);
   const [branch, setBranch] = useState<CmsBranch | null>(null);
   const [message, setMessage] = useState('Sign in to load settings from the database.');
+  const [role, setRole] = useState('');
   const [token, setToken] = useState('');
 
   useEffect(() => {
     const settings = readCmsSettings();
+    setRole(settings.role);
     setToken(settings.token);
     if (!settings.tenantId || !settings.branchId || !settings.token) return;
     void Promise.all([getCmsTenants(settings.token), getCmsBranches(settings.tenantId, settings.token)])
@@ -61,22 +64,27 @@ export default function SettingsPage() {
     }
   }
 
+  const canManageBranchSettings = ['owner', 'manager'].includes(role);
+
   return (
-    <PageShell eyebrow="Settings" title="Branding, branch defaults, tax, and policy controls" description="Restaurant-level configuration stays close to the operators who need it.">
+    <PageShell eyebrow="Settings" title="Account and workspace settings" description="Manage your login security and workspace defaults available to your role.">
       {message ? <p className="notice-text">{message}</p> : null}
       <section className="cms-settings-grid">
         <article className="panel"><h2>Restaurant profile</h2><div className="form-stack"><label>Restaurant<input readOnly value={tenant?.legalName ?? ''} /></label><label>Currency<input readOnly value={tenant?.defaultCurrency ?? ''} /></label><label>Timezone<input readOnly value={tenant?.defaultTimezone ?? ''} /></label></div></article>
-        <article className="panel">
-          <div className="cms-section-head"><h2>Branch defaults</h2></div>
-          <div className="form-stack">
-            <label>Branch<input value={branchForm.name} onChange={(event) => setBranchForm({ ...branchForm, name: event.target.value })} /></label>
-            <label>Service mode<select value={branchForm.serviceMode} onChange={(event) => setBranchForm({ ...branchForm, serviceMode: event.target.value })}><option value="qr_dine_in">QR dine in</option><option value="counter_service">Counter service</option><option value="hybrid">Hybrid</option></select></label>
-            <label>Address line<input value={branchForm.addressLine1} onChange={(event) => setBranchForm({ ...branchForm, addressLine1: event.target.value })} /></label>
-            <label>City<input value={branchForm.city} onChange={(event) => setBranchForm({ ...branchForm, city: event.target.value })} /></label>
-            <label>Hours JSON<textarea value={branchForm.hours} onChange={(event) => setBranchForm({ ...branchForm, hours: event.target.value })} /></label>
-            <button onClick={() => void saveBranch()} type="button">Save branch settings</button>
-          </div>
-        </article>
+        {canManageBranchSettings ? (
+          <article className="panel">
+            <div className="cms-section-head"><h2>Branch defaults</h2></div>
+            <div className="form-stack">
+              <label>Branch<input value={branchForm.name} onChange={(event) => setBranchForm({ ...branchForm, name: event.target.value })} /></label>
+              <label>Service mode<select value={branchForm.serviceMode} onChange={(event) => setBranchForm({ ...branchForm, serviceMode: event.target.value })}><option value="qr_dine_in">QR dine in</option><option value="counter_service">Counter service</option><option value="hybrid">Hybrid</option></select></label>
+              <label>Address line<input value={branchForm.addressLine1} onChange={(event) => setBranchForm({ ...branchForm, addressLine1: event.target.value })} /></label>
+              <label>City<input value={branchForm.city} onChange={(event) => setBranchForm({ ...branchForm, city: event.target.value })} /></label>
+              <label>Hours JSON<textarea value={branchForm.hours} onChange={(event) => setBranchForm({ ...branchForm, hours: event.target.value })} /></label>
+              <button onClick={() => void saveBranch()} type="button">Save branch settings</button>
+            </div>
+          </article>
+        ) : null}
+        <ChangePasswordForm token={token} />
       </section>
     </PageShell>
   );

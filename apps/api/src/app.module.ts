@@ -8,6 +8,8 @@ import { DatabaseModule } from './database/mongoose.module';
 import { AccessModule } from './infrastructure/access/access.module';
 import { AuditModule } from './infrastructure/audit/audit.module';
 import { QueueModule } from './infrastructure/queue/queue.module';
+import { EmbeddedWorkerModule } from './infrastructure/workers/embedded-worker.module';
+import { RealtimeGatewayModule } from './infrastructure/realtime/realtime-gateway.module';
 import { RealtimePublisherModule } from './infrastructure/realtime/realtime-publisher.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
@@ -26,6 +28,7 @@ import { SessionsModule } from './modules/sessions/sessions.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { TablesModule } from './modules/tables/tables.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
+import { SuperAdminModule } from './modules/super-admin/super-admin.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 
 @Module({
@@ -40,7 +43,9 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     AccessModule,
     AuditModule,
     QueueModule,
+    EmbeddedWorkerModule,
     RealtimePublisherModule,
+    RealtimeGatewayModule,
     HealthModule,
     AuditLogsModule,
     AuthModule,
@@ -50,6 +55,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     TablesModule,
     FloorsModule,
     SessionsModule,
+    SuperAdminModule,
     OrdersModule,
     PaymentsModule,
     PublicModule,

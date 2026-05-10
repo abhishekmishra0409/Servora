@@ -6,6 +6,7 @@ export const envKeys = [
   'CLOUDINARY_CLOUD_NAME',
   'CLOUDINARY_FOLDER',
   'CORS_ORIGINS',
+  'EMBEDDED_WORKERS',
   'JWT_ACCESS_SECRET',
   'JWT_ACCESS_TTL',
   'JWT_GUEST_SECRET',
@@ -17,7 +18,6 @@ export const envKeys = [
   'MONGODB_URI',
   'RATE_LIMIT_MAX',
   'RATE_LIMIT_TTL',
-  'REALTIME_PORT',
   'REDIS_URL',
   'STRIPE_PRICE_ENTERPRISE',
   'STRIPE_PRICE_GROWTH',
@@ -25,6 +25,7 @@ export const envKeys = [
   'STRIPE_SECRET_KEY',
   'STRIPE_WEBHOOK_SECRET',
   'WEB_PORT',
+  'WEB_URL',
 ] as const;
 
 export type EnvKey = (typeof envKeys)[number];

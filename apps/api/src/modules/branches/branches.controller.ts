@@ -12,7 +12,6 @@ import { UpdateBranchDto } from './dto';
 
 @Controller('branches')
 @UseGuards(StaffJwtGuard, RolesGuard)
-@Roles(UserRole.Owner, UserRole.Manager)
 export class BranchesController {
   constructor(
     private readonly accessService: AccessService,
@@ -20,12 +19,21 @@ export class BranchesController {
   ) {}
 
   @Get()
+  @Roles(
+    UserRole.PlatformAdmin,
+    UserRole.Owner,
+    UserRole.Manager,
+    UserRole.Waiter,
+    UserRole.Kitchen,
+    UserRole.Cashier,
+  )
   async list(@Query('tenantId') tenantId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown[]> {
     await this.accessService.assertTenantAccess(user, tenantId);
     return this.branchesService.list(tenantId);
   }
 
   @Patch(':id')
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner)
   async update(@Param('id') id: string, @Body() dto: UpdateBranchDto, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertBranchRecordAccess(user, id);
     return this.branchesService.update(id, dto, user.sub);

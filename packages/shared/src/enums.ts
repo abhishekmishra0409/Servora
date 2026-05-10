@@ -1,4 +1,5 @@
 export enum UserRole {
+  SuperAdmin = 'super_admin',
   PlatformAdmin = 'platform_admin',
   Owner = 'owner',
   Manager = 'manager',
@@ -53,4 +54,3 @@ export enum SubscriptionStatus {
   Suspended = 'suspended',
   Cancelled = 'cancelled',
 }
-

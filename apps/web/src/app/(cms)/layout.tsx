@@ -5,29 +5,16 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 
+import { documentId, getCmsTenants } from '../../lib/api-client';
 import { clearCmsSettings, readCmsSettings } from '../../lib/cms-storage';
-
-const links = [
-  { href: '/dashboard',          icon: 'dashboard',           label: 'Dashboard'   },
-  { href: '/orders',             icon: 'receipt_long',        label: 'Orders'      },
-  { href: '/tables',             icon: 'table_restaurant',    label: 'Tables'      },
-  { href: '/floors',             icon: 'layers',              label: 'Floors'      },
-  { href: '/qr',                 icon: 'qr_code_2',           label: 'QR Codes'    },
-  { href: '/menu/categories',    icon: 'category',            label: 'Categories'  },
-  { href: '/menu/items',         icon: 'menu_book',           label: 'Menu Items'  },
-  { href: '/menu/schedules',     icon: 'event_available',     label: 'Schedules'   },
-  { href: '/service-requests',   icon: 'notifications_active',label: 'Requests'    },
-  { href: '/analytics',          icon: 'monitoring',          label: 'Analytics'   },
-  { href: '/staff',              icon: 'groups',              label: 'Staff'       },
-  { href: '/audit-logs',         icon: 'manage_search',       label: 'Audit Logs'  },
-  { href: '/subscription',       icon: 'workspace_premium',   label: 'Subscription'},
-  { href: '/settings',           icon: 'settings',            label: 'Settings'    },
-];
+import { canAccessPath, linksForRole } from '../../lib/role-access';
 
 export default function CmsLayout({ children }: { children: ReactNode }): ReactNode {
   const pathname = usePathname();
   const router = useRouter();
   const [checkedAuth, setCheckedAuth] = useState(false);
+  const [role, setRole] = useState('');
+  const [tenantStatus, setTenantStatus] = useState('');
 
   useEffect(() => {
     const settings = readCmsSettings();
@@ -35,8 +22,22 @@ export default function CmsLayout({ children }: { children: ReactNode }): ReactN
       router.replace('/login');
       return;
     }
+    if (!settings.role) {
+      clearCmsSettings();
+      router.replace('/login');
+      return;
+    }
 
+    setRole(settings.role);
     setCheckedAuth(true);
+    if (!['super_admin', 'platform_admin'].includes(settings.role) && settings.tenantId && settings.token) {
+      void getCmsTenants(settings.token)
+        .then((tenants) => {
+          const tenant = tenants.find((item) => documentId(item) === settings.tenantId) ?? tenants[0];
+          setTenantStatus(tenant?.status ?? '');
+        })
+        .catch(() => setTenantStatus(''));
+    }
   }, [router]);
 
   function logout(): void {
@@ -52,24 +53,32 @@ export default function CmsLayout({ children }: { children: ReactNode }): ReactN
     );
   }
 
+  const links = linksForRole(role);
+  const isPlatformRole = ['super_admin', 'platform_admin'].includes(role);
+  const subscriptionBlocked = !isPlatformRole && tenantStatus !== '' && tenantStatus !== 'active';
+  const subscriptionRecoveryPath = pathname === '/subscription' || pathname === '/settings';
+  const showSubscriptionWarning = subscriptionBlocked && pathname !== '/subscription';
+  const allowed = canAccessPath(role, pathname) && (!subscriptionBlocked || subscriptionRecoveryPath);
+
   return (
     <div className="cms-shell">
       <aside className="cms-sidebar">
-        {/* Brand */}
-        <Link className="cms-sidebar__brand" href="/dashboard">
+        <Link className="cms-sidebar__brand" href={isPlatformRole ? '/super-admin' : '/dashboard'}>
           <span className="material-symbols-outlined cms-sidebar__brand-icon" aria-hidden="true">
-            restaurant
+            {isPlatformRole ? 'admin_panel_settings' : 'restaurant'}
           </span>
           <div className="cms-sidebar__brand-text">
             <span>Restaurent</span>
-            <small>Admin Portal</small>
+            <small>{isPlatformRole ? 'Platform console' : role ? `${role.replaceAll('_', ' ')} workspace` : 'Staff Portal'}</small>
           </div>
         </Link>
 
-        {/* Navigation */}
         <nav aria-label="Admin navigation" className="cms-sidebar__nav">
           {links.map((link) => {
-            const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
+            const active =
+              link.href === '/super-admin'
+                ? pathname === link.href
+                : pathname === link.href || pathname.startsWith(`${link.href}/`);
 
             return (
               <Link
@@ -90,21 +99,52 @@ export default function CmsLayout({ children }: { children: ReactNode }): ReactN
           })}
         </nav>
 
-        {/* Footer */}
         <div className="cms-sidebar__footer">
+          {isPlatformRole ? (
+            <Link className="cms-sidebar__cta" href="/super-admin/tenants">
+              <span aria-hidden="true" className="material-symbols-outlined">add</span>
+              Add New Tenant
+            </Link>
+          ) : null}
           <span className="pill">
-            <span aria-hidden="true" className="material-symbols-outlined">storefront</span>
-            Harbor Grill
+            <span aria-hidden="true" className="material-symbols-outlined">
+              {isPlatformRole ? 'shield_person' : 'storefront'}
+            </span>
+            {isPlatformRole ? 'Platform' : 'Harbor Grill'}
           </span>
           <div className="cms-sidebar__footer-links">
             <Link href="/login">Switch account</Link>
-            <span style={{ color: 'var(--outline-variant)' }}>·</span>
+            <span style={{ color: 'var(--outline-variant)' }}>|</span>
             <button className="button-link" onClick={logout} type="button">Logout</button>
           </div>
         </div>
       </aside>
 
-      <div className="cms-content">{children}</div>
+      <div className="cms-content">
+        {showSubscriptionWarning ? (
+          <div className="subscription-warning">
+            <strong>Subscription needs attention</strong>
+            <span>Your subscription is cancelled, suspended, or payment failed. Update billing to restore workspace access.</span>
+            <Link href="/subscription">Open billing</Link>
+          </div>
+        ) : null}
+        {allowed ? (
+          children
+        ) : (
+          <main className="page-shell">
+            <section className="panel">
+              <p className="eyebrow">{subscriptionBlocked ? 'Billing required' : 'Access denied'}</p>
+              <h1>{subscriptionBlocked ? 'Update billing to restore this workspace.' : 'This workspace is not available for your role.'}</h1>
+              <p className="muted">
+                {subscriptionBlocked
+                  ? 'The account can still sign in, but product features are paused until the Stripe subscription is active again.'
+                  : `Use the sidebar to open an area assigned to ${role.replaceAll('_', ' ') || 'your account'}.`}
+              </p>
+              {subscriptionBlocked ? <Link className="button-secondary" href="/subscription">Go to subscription</Link> : null}
+            </section>
+          </main>
+        )}
+      </div>
     </div>
   );
 }

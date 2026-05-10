@@ -12,4 +12,5 @@
 - CMS audit logs and floor management pages render loading, empty, success, and error states.
 - Customer menu dietary and allergen filters work with live menu data.
 - `/ready` reports unhealthy when MongoDB or Redis is unavailable.
-- Docker Compose starts MongoDB and Redis before API, realtime, and worker services.
+- Docker Compose starts MongoDB and Redis before the active API and web services.
+- With `EMBEDDED_WORKERS=true`, API startup creates BullMQ processors and consumes queued jobs without a separate worker process.

@@ -31,6 +31,7 @@ const ensureTestEnv = (dbName: string): void => {
   process.env.MONGODB_URI = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017';
   process.env.MONGODB_DB_NAME = normalizeDbName(dbName);
   process.env.REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
+  process.env.WEB_URL = process.env.WEB_URL ?? 'http://127.0.0.1:3000';
 };
 
 export const createTestApp = async (dbName: string): Promise<INestApplication> => {

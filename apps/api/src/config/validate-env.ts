@@ -1,7 +1,15 @@
 import { envKeys } from './env.schema';
 
 export const validateEnv = (env: Record<string, string | undefined>): Record<string, string | undefined> => {
-  const required = ['MONGODB_URI', 'JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'JWT_GUEST_SECRET'];
+  const required = [
+    'CORS_ORIGINS',
+    'JWT_ACCESS_SECRET',
+    'JWT_REFRESH_SECRET',
+    'JWT_GUEST_SECRET',
+    'MONGODB_URI',
+    'REDIS_URL',
+    'WEB_URL',
+  ];
   const missing = required.filter((key) => !env[key]);
 
   if (missing.length > 0) {
@@ -16,4 +24,3 @@ export const validateEnv = (env: Record<string, string | undefined>): Record<str
 
   return env;
 };
-

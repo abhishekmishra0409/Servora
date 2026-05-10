@@ -23,20 +23,22 @@ export class MenuController {
   ) {}
 
   @Get('menu')
-  getPublicMenu(@Query('tenantId') tenantId: string, @Query('branchId') branchId: string): Promise<unknown> {
+  async getPublicMenu(@Query('tenantId') tenantId: string, @Query('branchId') branchId: string): Promise<unknown> {
+    await this.accessService.assertTenantActive(tenantId);
     return this.menuService.getPublicMenu(tenantId, branchId);
   }
 
   @Get('menu/categories')
-  getPublicCategories(
+  async getPublicCategories(
     @Query('tenantId') tenantId: string,
     @Query('branchId') branchId?: string,
   ): Promise<unknown> {
+    await this.accessService.assertTenantActive(tenantId);
     return this.menuService.getCategories(tenantId, branchId);
   }
 
   @UseGuards(StaffJwtGuard, RolesGuard)
-  @Roles(UserRole.Owner, UserRole.Manager)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager)
   @Post('cms/menu/categories')
   async createCategory(@Body() dto: CreateCategoryDto, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     if (dto.branchId) {
@@ -48,7 +50,7 @@ export class MenuController {
   }
 
   @UseGuards(StaffJwtGuard, RolesGuard)
-  @Roles(UserRole.Owner, UserRole.Manager)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager)
   @Patch('cms/menu/categories/:id')
   async updateCategory(@Param('id') id: string, @Body() dto: UpdateCategoryDto, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertMenuCategoryAccess(user, id);
@@ -56,7 +58,7 @@ export class MenuController {
   }
 
   @UseGuards(StaffJwtGuard, RolesGuard)
-  @Roles(UserRole.Owner, UserRole.Manager)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager)
   @Delete('cms/menu/categories/:id')
   async deleteCategory(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<{ success: boolean }> {
     await this.accessService.assertMenuCategoryAccess(user, id);
@@ -64,7 +66,7 @@ export class MenuController {
   }
 
   @UseGuards(StaffJwtGuard, RolesGuard)
-  @Roles(UserRole.Owner, UserRole.Manager)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager)
   @Post('cms/menu/items')
   async createItem(@Body() dto: CreateMenuItemDto, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertBranchAccess(user, dto.branchId);
@@ -72,7 +74,7 @@ export class MenuController {
   }
 
   @UseGuards(StaffJwtGuard, RolesGuard)
-  @Roles(UserRole.Owner, UserRole.Manager, UserRole.Waiter)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter)
   @Get('cms/menu/items')
   async listItems(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertBranchAccess(user, branchId);
@@ -80,7 +82,7 @@ export class MenuController {
   }
 
   @UseGuards(StaffJwtGuard, RolesGuard)
-  @Roles(UserRole.Owner, UserRole.Manager, UserRole.Waiter)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter)
   @Get('cms/menu/items/:id')
   async getItem(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertMenuItemAccess(user, id);
@@ -88,7 +90,7 @@ export class MenuController {
   }
 
   @UseGuards(StaffJwtGuard, RolesGuard)
-  @Roles(UserRole.Owner, UserRole.Manager)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager)
   @Patch('cms/menu/items/:id')
   async updateItem(@Param('id') id: string, @Body() dto: UpdateMenuItemDto, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertMenuItemAccess(user, id);
@@ -96,7 +98,7 @@ export class MenuController {
   }
 
   @UseGuards(StaffJwtGuard, RolesGuard)
-  @Roles(UserRole.Owner, UserRole.Manager)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager)
   @Delete('cms/menu/items/:id')
   async deleteItem(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<{ success: boolean }> {
     await this.accessService.assertMenuItemAccess(user, id);

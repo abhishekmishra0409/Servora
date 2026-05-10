@@ -1,18 +1,34 @@
 # Deployment
 
-## Single VPS Docker Compose
+## Active Apps
 
-- Run `docker compose up --build` with MongoDB and Redis available before app services.
-- Deploy `apps/api`, `apps/realtime`, and `apps/worker` as separate Node processes so API traffic, sockets, and BullMQ jobs can scale independently.
-- Deploy `apps/web` with Next.js runtime support.
-- Deploy `apps/waiter` and `apps/kitchen` as static assets behind HTTPS.
-- Set `MONGODB_URI`, `MONGODB_DB_NAME`, `REDIS_URL`, JWT secrets, CORS origins, `SENTRY_DSN`, Stripe keys, and Cloudinary keys in production env.
+- Deploy only `apps/api` and `apps/web` as Node.js applications.
+- Keep MongoDB and Redis available to the API; Redis is used for BullMQ and realtime pub/sub.
+- `apps/realtime`, `apps/worker`, `apps/waiter`, and `apps/kitchen` are archived reference folders and are not active deploy targets.
+
+## API Deployment
+
+- Build with `npm run build:api`.
+- Start with `npm run start:api`.
+- Set `EMBEDDED_WORKERS=true` so the API process runs BullMQ processors.
+- Set `MONGODB_URI`, `MONGODB_DB_NAME`, `REDIS_URL`, JWT secrets, `WEB_URL`, `CORS_ORIGINS`, Stripe keys, and Cloudinary keys.
 - Keep `/api/v1/webhooks/stripe` publicly reachable and verify signatures with `STRIPE_WEBHOOK_SECRET`.
-- Use `/api/v1/ready` for readiness; it checks MongoDB and Redis instead of returning a static value.
+- Use `/api/v1/ready` for readiness; it checks MongoDB and Redis.
+
+## Web Deployment
+
+- Build with `npm run build:web`.
+- Start with `npm run start:web`.
+- For same-machine hosting, leave browser API env values blank and let Next.js proxy `/api/v1` and `/socket.io` to `API_URL`.
+- For independent hosting, set `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_REALTIME_URL` to the public API origin, and set `NEXT_PUBLIC_CUSTOMER_ORIGIN` to the public web origin.
+
+## Docker Compose
+
+- `docker compose up --build` starts MongoDB, Redis, API, and web only.
+- The API container exposes `4000`; the web container exposes `3000`.
 
 ## Operations
 
 - Backup MongoDB with `npm run backup:mongo`. Set `BACKUP_DIR` to choose the target folder.
 - Restore a dump with `npm run restore:mongo -- <backup-directory>`.
 - Keep Redis persistent enough for BullMQ retries and realtime stream delivery.
-- Run the worker with the same `REDIS_URL` and MongoDB settings as the API.

@@ -28,7 +28,7 @@ export class ServiceRequestsController {
   }
 
   @UseGuards(StaffJwtGuard, RolesGuard)
-  @Roles(UserRole.Owner, UserRole.Manager, UserRole.Waiter)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter)
   @Get()
   async list(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertBranchAccess(user, branchId);
@@ -36,7 +36,7 @@ export class ServiceRequestsController {
   }
 
   @UseGuards(StaffJwtGuard, RolesGuard)
-  @Roles(UserRole.Owner, UserRole.Manager, UserRole.Waiter)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter)
   @Patch(':id/resolve')
   resolve(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     return this.serviceRequestsService.resolve(id, user.sub);

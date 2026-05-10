@@ -11,7 +11,7 @@ import { AuditService } from '../../infrastructure/audit/audit.service';
 
 @Controller('cms/audit-logs')
 @UseGuards(StaffJwtGuard, RolesGuard)
-@Roles(UserRole.Owner, UserRole.Manager)
+@Roles(UserRole.PlatformAdmin, UserRole.Owner)
 export class AuditLogsController {
   constructor(
     private readonly accessService: AccessService,
@@ -31,4 +31,3 @@ export class AuditLogsController {
     return this.auditService.list(tenantId, branchId);
   }
 }
-

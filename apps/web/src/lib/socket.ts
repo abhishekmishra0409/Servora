@@ -1,7 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 
 const realtimeUrl = (): string => {
-  const value = process.env.NEXT_PUBLIC_REALTIME_URL ?? 'http://localhost:4001';
+  const value = process.env.NEXT_PUBLIC_REALTIME_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
   if (typeof window === 'undefined') {
     return value;
   }

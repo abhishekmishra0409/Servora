@@ -1,11 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { UserRole, type StaffJwtPayload } from '@restaurent/shared';
 import { Model } from 'mongoose';
 
 import { Membership } from '../../database/schemas/membership.schema';
 import { User } from '../../database/schemas/user.schema';
 import { hashValue } from '../../common/utils/hash';
 import { AuditService } from '../../infrastructure/audit/audit.service';
+import { BillingService } from '../billing/billing.service';
 import { CreateStaffDto, UpdateStaffDto } from './dto';
 
 @Injectable()
@@ -14,6 +16,7 @@ export class StaffService {
     @InjectModel(Membership.name) private readonly membershipModel: Model<Membership>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly auditService: AuditService,
+    private readonly billingService: BillingService,
   ) {}
 
   async list(branchId: string): Promise<unknown[]> {
@@ -39,13 +42,26 @@ export class StaffService {
     });
   }
 
-  async create(dto: CreateStaffDto, actorUserId?: string): Promise<unknown> {
+  async create(dto: CreateStaffDto, actor: StaffJwtPayload): Promise<unknown> {
+    this.assertCanAssignRole(dto.role, actor.role);
+
+    const normalizedEmail = dto.email.toLowerCase();
+    const existingUser = await this.userModel.findOne({ email: normalizedEmail }).select('_id').lean().exec();
+    const existingMembership = existingUser
+      ? await this.membershipModel
+          .exists({ branchId: dto.branchId, tenantId: dto.tenantId, userId: String(existingUser._id) })
+          .exec()
+      : null;
+    if (!existingMembership) {
+      await this.assertEmployeeLimit(dto.tenantId);
+    }
+
     const user = await this.userModel.findOneAndUpdate(
-      { email: dto.email.toLowerCase() },
+      { email: normalizedEmail },
       {
         $set: {
           active: true,
-          email: dto.email.toLowerCase(),
+          email: normalizedEmail,
           name: dto.name,
           passwordHash: await hashValue(dto.password),
         },
@@ -61,7 +77,7 @@ export class StaffService {
 
     await this.auditService.record({
       action: 'staff.created',
-      actorUserId,
+      actorUserId: actor.sub,
       branchId: membership.branchId,
       entityId: String(user._id),
       entityType: 'user',
@@ -81,13 +97,14 @@ export class StaffService {
     };
   }
 
-  async update(id: string, dto: UpdateStaffDto, actorUserId?: string): Promise<unknown> {
+  async update(id: string, dto: UpdateStaffDto, actor: StaffJwtPayload): Promise<unknown> {
     const membership = await this.membershipModel.findById(id).exec();
     if (!membership) {
       throw new NotFoundException('Staff membership not found');
     }
 
     if (dto.role) {
+      this.assertCanAssignRole(dto.role, actor.role);
       membership.role = dto.role;
       await membership.save();
     }
@@ -103,7 +120,7 @@ export class StaffService {
 
     await this.auditService.record({
       action: 'staff.updated',
-      actorUserId,
+      actorUserId: actor.sub,
       branchId: membership.branchId,
       entityId: String(user._id),
       entityType: 'user',
@@ -136,5 +153,25 @@ export class StaffService {
       });
     }
     return { success: true };
+  }
+
+  private assertCanAssignRole(targetRole: UserRole, actorRole: UserRole): void {
+    const platformRoles = [UserRole.SuperAdmin, UserRole.PlatformAdmin];
+    if (platformRoles.includes(targetRole) && actorRole !== UserRole.SuperAdmin) {
+      throw new ForbiddenException('Only a super admin can assign platform roles');
+    }
+  }
+
+  private async assertEmployeeLimit(tenantId: string): Promise<void> {
+    const plan = await this.billingService.getTenantBillingPlan(tenantId);
+    const employeeLimit = Number(plan?.employeeLimit ?? 0);
+    if (!employeeLimit) {
+      return;
+    }
+
+    const employeeCount = await this.membershipModel.countDocuments({ tenantId }).exec();
+    if (employeeCount >= employeeLimit) {
+      throw new ForbiddenException(`Your subscription allows up to ${employeeLimit} employee accounts.`);
+    }
   }
 }

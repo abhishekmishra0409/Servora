@@ -12,6 +12,7 @@ import { MenuItem } from '../../database/schemas/menu-item.schema';
 import { Order } from '../../database/schemas/order.schema';
 import { Payment } from '../../database/schemas/payment.schema';
 import { RestaurantTable } from '../../database/schemas/table.schema';
+import { Tenant } from '../../database/schemas/tenant.schema';
 
 @Injectable()
 export class AccessService {
@@ -24,10 +25,16 @@ export class AccessService {
     @InjectModel(Floor.name) private readonly floorModel: Model<Floor>,
     @InjectModel(MenuItem.name) private readonly menuItemModel: Model<MenuItem>,
     @InjectModel(MenuCategory.name) private readonly menuCategoryModel: Model<MenuCategory>,
+    @InjectModel(Tenant.name) private readonly tenantModel: Model<Tenant>,
   ) {}
 
+  private isGlobalAdmin(user: StaffJwtPayload): boolean {
+    return [UserRole.SuperAdmin, UserRole.PlatformAdmin].includes(user.role);
+  }
+
   async assertTenantAccess(user: StaffJwtPayload, tenantId: string): Promise<void> {
-    if (user.role === UserRole.PlatformAdmin || user.tenantId === tenantId) {
+    if (this.isGlobalAdmin(user) || user.tenantId === tenantId) {
+      await this.assertTenantSubscriptionUsable(user, tenantId);
       return;
     }
 
@@ -35,10 +42,12 @@ export class AccessService {
     if (!membership) {
       throw new ForbiddenException('Tenant access denied');
     }
+    await this.assertTenantSubscriptionUsable(user, tenantId);
   }
 
   async assertBranchAccess(user: StaffJwtPayload, branchId: string): Promise<void> {
-    if (user.role === UserRole.PlatformAdmin || user.branchId === branchId) {
+    if (this.isGlobalAdmin(user) || user.branchId === branchId) {
+      await this.assertTenantSubscriptionUsable(user, user.tenantId);
       return;
     }
 
@@ -53,6 +62,26 @@ export class AccessService {
     if (!membership) {
       throw new ForbiddenException('Branch access denied');
     }
+    await this.assertTenantSubscriptionUsable(user, user.tenantId);
+  }
+
+  async assertTenantActive(tenantId: string): Promise<void> {
+    if (!tenantId) {
+      return;
+    }
+
+    const tenant = await this.tenantModel.findById(tenantId).select('status').lean().exec();
+    if (tenant?.status && tenant.status !== 'active') {
+      throw new ForbiddenException('Subscription inactive. Update payment method to restore access.');
+    }
+  }
+
+  private async assertTenantSubscriptionUsable(user: StaffJwtPayload, tenantId: string): Promise<void> {
+    if (this.isGlobalAdmin(user) || !tenantId) {
+      return;
+    }
+
+    await this.assertTenantActive(tenantId);
   }
 
   async assertBranchRecordAccess(user: StaffJwtPayload, branchId: string): Promise<Branch> {

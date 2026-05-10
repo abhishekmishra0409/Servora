@@ -14,16 +14,16 @@ In simple terms:
 - Owners and managers use the CMS to view branch activity, live orders, and menu items.
 - The backend keeps the restaurant data consistent, secure, and branch-aware.
 
-The project is built as a monorepo with separate apps for the customer/CMS web experience, waiter app, kitchen app, API, realtime service, worker service, and shared domain package.
+The project is built as a monorepo with two active apps plus shared domain code. `apps/api` runs REST APIs, Socket.IO realtime, and embedded BullMQ workers. `apps/web` runs the unified Next.js frontend for the CMS, waiter, kitchen, billing, and customer QR/PWA routes. The old `apps/realtime`, `apps/worker`, `apps/waiter`, and `apps/kitchen` folders remain only as archived reference code.
 
 ## 2. Who Uses The System
 
 | User | What They Need | App / Surface |
 | --- | --- | --- |
-| Customer | Scan QR, browse menu, create order, track food | Customer PWA in `apps/web` |
-| Waiter | Confirm orders, monitor tables, resolve requests, mark served | Waiter app in `apps/waiter` |
-| Kitchen | See tickets and update preparation status | Kitchen app in `apps/kitchen` |
-| Owner / Manager | View dashboard, live orders, menu items, branch operations | CMS in `apps/web` |
+| Customer | Scan QR, browse menu, create order, track food | Customer PWA in `apps/web` under `/r/...` |
+| Waiter | Confirm orders, monitor tables, resolve requests, mark served | Staff workspace in `apps/web` |
+| Kitchen | See tickets and update preparation status | Kitchen board in `apps/web` |
+| Owner / Manager | View dashboard, live orders, menu items, branch operations | Staff workspace in `apps/web` |
 | Platform/Admin | Seed, manage tenants, plans, integrations | API/scripts/admin tooling |
 
 ## 3. Product Flow
@@ -90,35 +90,31 @@ flowchart TD
 
 | App / Package | Technology | Responsibility |
 | --- | --- | --- |
-| `apps/web` | Next.js | CMS pages and customer QR/PWA flow |
-| `apps/waiter` | Vite + React | Waiter operational dashboard |
-| `apps/kitchen` | Vite + React | Kitchen ticket board |
-| `apps/api` | NestJS | Auth, menu, tables, QR, sessions, buckets, orders, service requests, billing, webhooks |
-| `apps/realtime` | NestJS + Socket.IO | Realtime gateway and event rooms |
-| `apps/worker` | Node/BullMQ-style workers | Background jobs and processors |
+| `apps/web` | Next.js | Unified frontend for CMS, waiter, kitchen, billing, and customer QR/PWA flow |
+| `apps/api` | NestJS | Auth, menu, tables, QR, sessions, buckets, orders, service requests, billing, webhooks, Socket.IO, and embedded workers |
 | `packages/shared` | TypeScript | Shared enums, API contracts, route constants, permissions, event names |
 | `scripts` | TypeScript/shell | Seed, admin creation, migrations, local verification |
+| `apps/realtime`, `apps/worker`, `apps/waiter`, `apps/kitchen` | Mixed | Archived reference code only; not active build, script, or deploy targets |
 
 ## 5. Technical Architecture
 
 ```mermaid
 flowchart LR
-  Customer[Customer PWA] --> API[NestJS API]
-  CMS[Owner CMS] --> API
-  Waiter[Waiter App] --> API
-  Kitchen[Kitchen App] --> API
+  Customer[Customer PWA] --> Web[Unified Next.js Web]
+  Staff[Staff Workspace] --> Web
+  Web --> API[NestJS API]
   API --> Mongo[(MongoDB)]
   API --> Redis[(Redis)]
-  API --> Realtime[Realtime Gateway]
-  API --> Worker[Worker Service]
-  Realtime --> Redis
-  Worker --> Redis
-  Worker --> Mongo
+  API --> SocketIO[Socket.IO Gateway]
+  API --> Workers[Embedded BullMQ Workers]
+  SocketIO --> Redis
+  Workers --> Redis
+  Workers --> Mongo
   API --> Stripe[Stripe]
   API --> Cloudinary[Cloudinary]
 ```
 
-The API is the source of truth for transactional operations. The realtime gateway is prepared for live updates through Socket.IO rooms. Worker processes are intended for slower or retried tasks such as notifications, cleanup, billing reconciliation, and media processing.
+The API is the source of truth for transactional operations. Socket.IO runs on the API origin under `/socket.io`, and embedded workers process slower or retried jobs such as notifications, cleanup, billing reconciliation, analytics, and media cleanup when `EMBEDDED_WORKERS=true`.
 
 ## 6. Main Backend Domains
 
@@ -200,11 +196,11 @@ Seeded users:
 | Role | Email | Password | App |
 | --- | --- | --- | --- |
 | Owner | `owner@harborgrill.test` | `OwnerPass123!` | `http://localhost:3000/login` |
-| Waiter | `waiter@harborgrill.test` | `WaiterPass123!` | `http://localhost:4173` |
-| Kitchen | `kitchen@harborgrill.test` | `KitchenPass123!` | `http://localhost:4174` |
+| Waiter | `waiter@harborgrill.test` | `WaiterPass123!` | `http://localhost:3000/login` |
+| Kitchen | `kitchen@harborgrill.test` | `KitchenPass123!` | `http://localhost:3000/login` |
 | Platform admin | `platform@example.com` | from `.env` or `ChangeMe123!` | Admin tooling |
 
-For owner, waiter, and kitchen login, Branch ID can be left blank for the seeded single-branch account. The login response returns the branch ID and the frontend stores it automatically.
+For owner, waiter, kitchen, manager, and cashier login, Branch ID can be left blank for the seeded single-branch account. The login response returns the branch ID and role, and the unified frontend stores them automatically.
 
 ## 10. Local Running URLs
 
@@ -212,9 +208,10 @@ For owner, waiter, and kitchen login, Branch ID can be left blank for the seeded
 | --- | --- |
 | Web / CMS / Customer PWA | `http://localhost:3000` |
 | API health | `http://localhost:4000/api/v1/health` |
-| Realtime gateway | `http://localhost:4001` |
-| Waiter app | `http://localhost:4173` |
-| Kitchen app | `http://localhost:4174` |
+| Realtime gateway | `http://localhost:4000` |
+| Staff dashboard | `http://localhost:3000/dashboard` |
+| Kitchen board | `http://localhost:3000/kitchen-board` |
+| Bills | `http://localhost:3000/bills` |
 
 ### Running On Your Wi-Fi / Router
 
@@ -226,8 +223,8 @@ Example:
 | --- | --- |
 | Web / CMS / Customer PWA | `http://192.168.1.45:3000` |
 | Customer QR demo | `http://192.168.1.45:3000/r/harbor-grill/downtown/t/qr-t1` |
-| Waiter app | `http://192.168.1.45:4173` |
-| Kitchen app | `http://192.168.1.45:4174` |
+| Staff dashboard | `http://192.168.1.45:3000/dashboard` |
+| Kitchen board | `http://192.168.1.45:3000/kitchen-board` |
 | API health | `http://192.168.1.45:4000/api/v1/health` |
 
 How to find the IP on Windows:
@@ -244,7 +241,7 @@ Router demo rules:
 - Use the computer IP, not `localhost`, on external devices.
 - The frontend rewrites local API and realtime URLs to the LAN hostname when opened from the router IP.
 - The API allows private-network development origins.
-- Windows Firewall may need to allow Node.js on ports `3000`, `4000`, `4001`, `4173`, and `4174`.
+- Windows Firewall may need to allow Node.js on ports `3000` and `4000`.
 
 Common commands:
 
@@ -314,11 +311,11 @@ API:
 The current project is an MVP foundation. The next practical improvements are:
 
 - Replace manual/token-style CMS controls fully with protected routes and auth-aware layouts.
-- Add realtime updates to customer, waiter, kitchen, and CMS screens instead of polling/manual refresh.
+- Expand realtime coverage on customer and staff screens while keeping polling fallbacks for resilience.
 - Add full CMS menu item create/edit forms.
 - Add table-session detail API for richer waiter table detail views.
 - Add full bill/payment lifecycle and cashier workflow.
-- Add role-based route guards in the frontend apps.
+- Add more focused end-to-end coverage for role-based staff workflows.
 - Add stronger automated end-to-end tests with seeded local services.
 - Add production monitoring, structured logging, and deployment-specific environment hardening.
 
@@ -338,8 +335,8 @@ For technical audiences:
 - Explain MongoDB entities: tenant, branch, table, session, bucket, order.
 - Explain JWT auth separation between guest and staff.
 - Explain why order submission uses idempotency.
-- Explain planned realtime updates through Socket.IO rooms.
+- Explain realtime updates through Socket.IO rooms on the API origin.
 
 ## 14. One-Minute Pitch
 
-Restaurent is a restaurant operations platform that connects the customer table, waiter floor, kitchen station, and owner dashboard. Customers scan a QR code and order from their table. Waiters confirm orders and handle service requests. Kitchen staff process live tickets. Owners see branch activity and manage menu data. The system is multi-tenant, branch-aware, and built with a scalable architecture using a NestJS API, MongoDB, realtime gateway, worker services, and React-based operational apps.
+Restaurent is a restaurant operations platform that connects the customer table, waiter floor, kitchen station, and owner dashboard. Customers scan a QR code and order from their table. Waiters confirm orders and handle service requests. Kitchen staff process live tickets. Owners see branch activity and manage menu data. The system is multi-tenant, branch-aware, and built with a NestJS API, MongoDB, Redis-backed realtime and queue infrastructure, and one unified Next.js frontend.

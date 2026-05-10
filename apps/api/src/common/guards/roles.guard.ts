@@ -5,7 +5,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { StaffJwtPayload, UserRole } from '@restaurent/shared';
+import { UserRole, type StaffJwtPayload } from '@restaurent/shared';
 
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
@@ -25,11 +25,13 @@ export class RolesGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<{ user?: StaffJwtPayload }>();
 
-    if (!request.user || !roles.includes(request.user.role)) {
+    const superAdminCanUsePlatformRoute =
+      request.user?.role === UserRole.SuperAdmin && roles.includes(UserRole.PlatformAdmin);
+
+    if (!request.user || (!roles.includes(request.user.role) && !superAdminCanUsePlatformRoute)) {
       throw new ForbiddenException('Missing required role');
     }
 
     return true;
   }
 }
-

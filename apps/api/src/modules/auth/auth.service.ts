@@ -2,14 +2,14 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
-import type { StaffJwtPayload, StaffSession } from '@restaurent/shared';
+import { UserRole, type StaffJwtPayload, type StaffSession } from '@restaurent/shared';
 import { isValidObjectId, Model } from 'mongoose';
 
 import { hashValue, matchesHash } from '../../common/utils/hash';
 import { Membership } from '../../database/schemas/membership.schema';
 import { User } from '../../database/schemas/user.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
-import { LoginDto } from './dto';
+import { ChangePasswordDto, LoginDto } from './dto';
 
 @Injectable()
 export class AuthService {
@@ -34,12 +34,21 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const membership = await this.membershipModel
+    let membership = await this.membershipModel
       .findOne({
         userId: String(user._id),
         ...(dto.branchId ? { branchId: dto.branchId } : {}),
       })
       .exec();
+
+    if (!membership && dto.branchId) {
+      membership = await this.membershipModel
+        .findOne({
+          role: { $in: [UserRole.SuperAdmin, UserRole.PlatformAdmin] },
+          userId: String(user._id),
+        })
+        .exec();
+    }
 
     if (!membership) {
       throw new UnauthorizedException('Membership not found');
@@ -114,13 +123,7 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token not available');
     }
 
-    let valid = false;
-
-    try {
-      valid = await matchesHash(refreshToken, user.refreshTokenHash);
-    } catch {
-      valid = false;
-    }
+    const valid = await matchesHash(refreshToken, user.refreshTokenHash).catch(() => false);
 
     if (!valid) {
       throw new UnauthorizedException('Refresh token mismatch');
@@ -172,6 +175,37 @@ export class AuthService {
         tenantId: membership.tenantId,
       });
     }
+    return { success: true };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<{ success: boolean }> {
+    const user = await this.userModel.findById(userId).exec();
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const validPassword = await matchesHash(dto.currentPassword, user.passwordHash);
+    if (!validPassword) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    user.passwordHash = await hashValue(dto.newPassword);
+    user.set('refreshTokenHash', undefined);
+    await user.save();
+
+    const membership = await this.membershipModel.findOne({ userId }).lean().exec();
+    if (membership) {
+      await this.auditService.record({
+        action: 'staff.password_changed',
+        actorUserId: userId,
+        ...(membership.branchId ? { branchId: membership.branchId } : {}),
+        entityId: userId,
+        entityType: 'user',
+        tenantId: membership.tenantId,
+      });
+    }
+
     return { success: true };
   }
 

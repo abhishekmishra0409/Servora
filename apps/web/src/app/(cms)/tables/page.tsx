@@ -39,6 +39,7 @@ export default function TablesPage() {
   const [editingId, setEditingId] = useState('');
   const [form, setForm] = useState({ capacity: '4', floorId: '', tableNo: '' });
   const [qrImages, setQrImages] = useState<Record<string, string>>({});
+  const [role, setRole] = useState('');
   const [tables, setTables] = useState<CmsTable[]>([]);
   const [message, setMessage] = useState('Sign in to load tables from the database.');
   const [tenant, setTenant] = useState<CmsTenant | null>(null);
@@ -114,6 +115,7 @@ export default function TablesPage() {
     const origin = initialCustomerOrigin();
     setBranchId(settings.branchId);
     setCustomerOrigin(origin);
+    setRole(settings.role);
     setTenantId(settings.tenantId);
     setToken(settings.token);
     void load(settings.tenantId, settings.branchId, settings.token, origin);
@@ -142,6 +144,10 @@ export default function TablesPage() {
   }
 
   async function submit(): Promise<void> {
+    if (!canManageTables) {
+      setMessage('Your role can view tables but cannot change table setup.');
+      return;
+    }
     if (!tenantId || !branchId || !token || !form.floorId || !form.tableNo.trim()) {
       setMessage('Tenant, branch, floor, table number, and login token are required.');
       return;
@@ -163,6 +169,7 @@ export default function TablesPage() {
   }
 
   async function remove(table: CmsTable): Promise<void> {
+    if (!canManageTables) return;
     if (!token) return;
     try {
       await deleteCmsTable(documentId(table), token);
@@ -173,6 +180,7 @@ export default function TablesPage() {
   }
 
   async function regenerate(table: CmsTable): Promise<void> {
+    if (!canManageTables) return;
     if (!token) return;
     try {
       await regenerateCmsQr(documentId(table), token);
@@ -182,33 +190,37 @@ export default function TablesPage() {
     }
   }
 
+  const canManageTables = ['platform_admin', 'owner', 'manager'].includes(role);
+
   return (
     <PageShell eyebrow="Tables" title="Table and floor operations" description="Color-coded table status, active session snapshots, waiter attention, and bill actions mapped to real branch flow.">
       {message ? <p className="notice-text">{message}</p> : null}
-      <section className="cms-settings-grid">
-        <article className="panel">
-          <div className="cms-section-head">
-            <h2>{editingId ? 'Update table' : 'Add table'}</h2>
-            {editingId ? <button className="button-secondary" onClick={resetForm} type="button">Cancel</button> : null}
-          </div>
-          <div className="form-stack">
-            <label>Table number<input value={form.tableNo} onChange={(event) => setForm({ ...form, tableNo: event.target.value })} /></label>
-            <label>Capacity<input min="1" type="number" value={form.capacity} onChange={(event) => setForm({ ...form, capacity: event.target.value })} /></label>
-            <label>Floor ID<input value={form.floorId} onChange={(event) => setForm({ ...form, floorId: event.target.value })} /></label>
-            <button onClick={() => void submit()} type="button">{editingId ? 'Update table' : 'Create table'}</button>
-          </div>
-        </article>
-        <article className="panel">
-          <div className="cms-section-head"><h2>QR lifecycle</h2></div>
-          <div className="form-stack">
-            <label>
-              Customer app origin
-              <input value={customerOrigin} onChange={(event) => setCustomerOrigin(event.target.value)} />
-            </label>
-            <p className="muted">Every table keeps its own QR token. Regenerate it when a printed code is compromised or a table is reissued.</p>
-          </div>
-        </article>
-      </section>
+      {canManageTables ? (
+        <section className="cms-settings-grid">
+          <article className="panel">
+            <div className="cms-section-head">
+              <h2>{editingId ? 'Update table' : 'Add table'}</h2>
+              {editingId ? <button className="button-secondary" onClick={resetForm} type="button">Cancel</button> : null}
+            </div>
+            <div className="form-stack">
+              <label>Table number<input value={form.tableNo} onChange={(event) => setForm({ ...form, tableNo: event.target.value })} /></label>
+              <label>Capacity<input min="1" type="number" value={form.capacity} onChange={(event) => setForm({ ...form, capacity: event.target.value })} /></label>
+              <label>Floor ID<input value={form.floorId} onChange={(event) => setForm({ ...form, floorId: event.target.value })} /></label>
+              <button onClick={() => void submit()} type="button">{editingId ? 'Update table' : 'Create table'}</button>
+            </div>
+          </article>
+          <article className="panel">
+            <div className="cms-section-head"><h2>QR lifecycle</h2></div>
+            <div className="form-stack">
+              <label>
+                Customer app origin
+                <input value={customerOrigin} onChange={(event) => setCustomerOrigin(event.target.value)} />
+              </label>
+              <p className="muted">Every table keeps its own QR token. Regenerate it when a printed code is compromised or a table is reissued.</p>
+            </div>
+          </article>
+        </section>
+      ) : null}
       <section className="cms-table-grid">
         {tables.map((table) => {
           const tableId = documentId(table);
@@ -234,11 +246,13 @@ export default function TablesPage() {
               <strong>{table.qrToken ?? 'No QR token'}</strong>
               {url ? <a href={url} target="_blank" rel="noreferrer">{url}</a> : null}
             </div>
-            <div className="action-row">
-              <button className="button-secondary" onClick={() => edit(table)} type="button">Edit</button>
-              <button className="button-secondary" onClick={() => void regenerate(table)} type="button">Regenerate QR</button>
-              <button className="danger-button" onClick={() => void remove(table)} type="button">Delete</button>
-            </div>
+            {canManageTables ? (
+              <div className="action-row">
+                <button className="button-secondary" onClick={() => edit(table)} type="button">Edit</button>
+                <button className="button-secondary" onClick={() => void regenerate(table)} type="button">Regenerate QR</button>
+                <button className="danger-button" onClick={() => void remove(table)} type="button">Delete</button>
+              </div>
+            ) : null}
           </article>
           );
         })}

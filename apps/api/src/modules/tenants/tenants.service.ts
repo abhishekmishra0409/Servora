@@ -11,7 +11,7 @@ export class TenantsService {
   constructor(@InjectModel(Tenant.name) private readonly tenantModel: Model<Tenant>) {}
 
   async list(user: StaffJwtPayload): Promise<Tenant[]> {
-    if (user.role !== UserRole.PlatformAdmin) {
+    if (![UserRole.SuperAdmin, UserRole.PlatformAdmin].includes(user.role)) {
       return this.tenantModel.find({ _id: user.tenantId }).sort({ createdAt: -1 }).lean().exec();
     }
     return this.tenantModel.find().sort({ createdAt: -1 }).lean().exec();
