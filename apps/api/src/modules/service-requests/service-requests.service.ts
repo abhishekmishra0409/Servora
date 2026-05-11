@@ -9,6 +9,7 @@ import { TableSession } from '../../database/schemas/table-session.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
 import { QueueService } from '../../infrastructure/queue/queue.service';
 import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
+import { PaymentsService } from '../payments/payments.service';
 import { CreateServiceRequestDto } from './dto';
 
 @Injectable()
@@ -19,15 +20,19 @@ export class ServiceRequestsService {
     @InjectModel(TableSession.name)
     private readonly tableSessionModel: Model<TableSession>,
     private readonly auditService: AuditService,
+    private readonly paymentsService: PaymentsService,
     private readonly queueService: QueueService,
     private readonly realtimePublisher: RealtimePublisher,
   ) {}
 
   async create(user: GuestJwtPayload, dto: CreateServiceRequestDto): Promise<ServiceRequest> {
-    const tableSession = await this.tableSessionModel.findById(user.tableSessionId).lean().exec();
+    const tableSession = await this.tableSessionModel
+      .findOne({ _id: user.tableSessionId, status: 'active' })
+      .lean()
+      .exec();
 
     if (!tableSession) {
-      throw new NotFoundException('Table session not found');
+      throw new NotFoundException('Active table session not found');
     }
 
     const request = await this.serviceRequestModel.create({
@@ -40,6 +45,9 @@ export class ServiceRequestsService {
       ...(dto.message ? { message: dto.message } : {}),
     });
     await Promise.all([
+      dto.requestType === 'bill'
+        ? this.paymentsService.requestBillForTableSession(user.tableSessionId, user.participantId).catch(() => null)
+        : Promise.resolve(null),
       this.queueService.enqueueNotificationJob(
         'notifications.service_request_created',
         {
@@ -54,6 +62,13 @@ export class ServiceRequestsService {
         requestId: String(request._id),
         status: request.status,
         tableId: request.tableId,
+        tableSessionId: request.tableSessionId,
+      }),
+      this.realtimePublisher.publishRealtimeEvent(`tableSession:${request.tableSessionId}`, SOCKET_EVENTS.serviceRequestCreated, {
+        requestId: String(request._id),
+        status: request.status,
+        tableId: request.tableId,
+        tableSessionId: request.tableSessionId,
       }),
       this.auditService.record({
         action: 'service_request.created',
@@ -65,6 +80,17 @@ export class ServiceRequestsService {
       }),
     ]);
     return request;
+  }
+
+  async getCurrentForGuest(user: GuestJwtPayload): Promise<ServiceRequest | null> {
+    return this.serviceRequestModel
+      .findOne({
+        status: { $in: [ServiceRequestStatus.Open, ServiceRequestStatus.Assigned] },
+        tableSessionId: user.tableSessionId,
+      })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
   }
 
   async list(branchId: string): Promise<ServiceRequest[]> {
@@ -103,6 +129,13 @@ export class ServiceRequestsService {
         requestId: String(request._id),
         status: request.status,
         tableId: request.tableId,
+        tableSessionId: request.tableSessionId,
+      }),
+      this.realtimePublisher.publishRealtimeEvent(`tableSession:${request.tableSessionId}`, SOCKET_EVENTS.serviceRequestResolved, {
+        requestId: String(request._id),
+        status: request.status,
+        tableId: request.tableId,
+        tableSessionId: request.tableSessionId,
       }),
       this.auditService.record({
         action: 'service_request.resolved',

@@ -27,6 +27,12 @@ export class ServiceRequestsController {
     return this.serviceRequestsService.create(user, dto);
   }
 
+  @UseGuards(GuestJwtGuard)
+  @Get('current')
+  getCurrent(@CurrentUser() user: GuestJwtPayload): Promise<unknown> {
+    return this.serviceRequestsService.getCurrentForGuest(user);
+  }
+
   @UseGuards(StaffJwtGuard, RolesGuard)
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter)
   @Get()

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import type { StaffJwtPayload } from '@restaurent/shared';
 import { UserRole } from '@restaurent/shared';
 
@@ -21,13 +21,16 @@ export class StaffController {
 
   @Get()
   async list(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown[]> {
-    await this.accessService.assertBranchAccess(user, branchId);
-    return this.staffService.list(branchId);
+    const branch = await this.accessService.assertBranchRecordAccess(user, branchId);
+    return this.staffService.list(branchId, String(branch.tenantId), user);
   }
 
   @Post()
   async create(@Body() dto: CreateStaffDto, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
-    await this.accessService.assertBranchAccess(user, dto.branchId);
+    const branch = await this.accessService.assertBranchRecordAccess(user, dto.branchId);
+    if (String(branch.tenantId) !== dto.tenantId) {
+      throw new ForbiddenException('Branch does not belong to tenant');
+    }
     return this.staffService.create(dto, user);
   }
 
@@ -40,6 +43,6 @@ export class StaffController {
   @Delete(':id')
   async delete(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<{ success: boolean }> {
     await this.accessService.assertStaffMembershipAccess(user, id);
-    return this.staffService.delete(id, user.sub);
+    return this.staffService.delete(id, user);
   }
 }

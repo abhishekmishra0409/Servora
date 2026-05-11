@@ -8,7 +8,7 @@ import { documentId, getCmsBranches, getCmsTenants, updateCmsBranch, type CmsBra
 import { readCmsSettings } from '../../../lib/cms-storage';
 
 export default function SettingsPage() {
-  const [branchForm, setBranchForm] = useState({ addressLine1: '', city: '', hours: '', name: '', serviceMode: 'qr_dine_in' });
+  const [branchForm, setBranchForm] = useState({ addressLine1: '', city: '', hours: '', name: '', serviceMode: 'waiter_confirmed' });
   const [tenant, setTenant] = useState<CmsTenant | null>(null);
   const [branch, setBranch] = useState<CmsBranch | null>(null);
   const [message, setMessage] = useState('Sign in to load settings from the database.');
@@ -76,7 +76,7 @@ export default function SettingsPage() {
             <div className="cms-section-head"><h2>Branch defaults</h2></div>
             <div className="form-stack">
               <label>Branch<input value={branchForm.name} onChange={(event) => setBranchForm({ ...branchForm, name: event.target.value })} /></label>
-              <label>Service mode<select value={branchForm.serviceMode} onChange={(event) => setBranchForm({ ...branchForm, serviceMode: event.target.value })}><option value="qr_dine_in">QR dine in</option><option value="counter_service">Counter service</option><option value="hybrid">Hybrid</option></select></label>
+              <label>Service mode<select value={branchForm.serviceMode} onChange={(event) => setBranchForm({ ...branchForm, serviceMode: event.target.value })}><option value="waiter_confirmed">Waiter confirmed</option><option value="self_service">Self-service</option><option value="hybrid">Hybrid</option></select></label>
               <label>Address line<input value={branchForm.addressLine1} onChange={(event) => setBranchForm({ ...branchForm, addressLine1: event.target.value })} /></label>
               <label>City<input value={branchForm.city} onChange={(event) => setBranchForm({ ...branchForm, city: event.target.value })} /></label>
               <label>Hours JSON<textarea value={branchForm.hours} onChange={(event) => setBranchForm({ ...branchForm, hours: event.target.value })} /></label>

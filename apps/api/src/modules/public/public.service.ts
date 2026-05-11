@@ -156,7 +156,11 @@ export class PublicService {
     }
     await this.accessService.assertTenantActive(String(qrCode.tenantId));
 
-    const payment = await this.paymentModel.findOne({ orderId }).sort({ updatedAt: -1 }).lean().exec();
+    const payment = await this.paymentModel
+      .findOne({ $or: [{ orderId }, { orderIds: orderId }] })
+      .sort({ updatedAt: -1 })
+      .lean()
+      .exec();
     return payment
       ? {
           amount: payment.amount,
@@ -164,8 +168,11 @@ export class PublicService {
           id: String((payment as { _id: unknown })._id),
           method: payment.method,
           orderId,
+          orderIds: payment.orderIds ?? (payment.orderId ? [payment.orderId] : []),
           provider: payment.provider,
           status: payment.status,
+          tableId: payment.tableId,
+          tableSessionId: payment.tableSessionId,
         }
       : null;
   }

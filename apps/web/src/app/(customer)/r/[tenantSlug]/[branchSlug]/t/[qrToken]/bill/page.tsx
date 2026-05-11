@@ -32,9 +32,15 @@ export default function CustomerBillPage() {
 
   const totals = useMemo(() => {
     const total = rows.reduce((sum, row) => sum + row.order.grandTotal, 0);
-    const paid = rows
-      .filter((row) => row.payment?.status === 'captured')
-      .reduce((sum, row) => sum + (row.payment?.amount ?? row.order.grandTotal), 0);
+    const capturedPayments = new Map<string, PaymentSnapshot>();
+
+    for (const row of rows) {
+      if (row.payment?.status === 'captured') {
+        capturedPayments.set(row.payment.id ?? row.payment._id ?? row.order.id, row.payment);
+      }
+    }
+
+    const paid = [...capturedPayments.values()].reduce((sum, payment) => sum + payment.amount, 0);
 
     return {
       due: Math.max(total - paid, 0),
@@ -123,7 +129,7 @@ export default function CustomerBillPage() {
                   {order.items.length} items - order {statusLabel(order.status)} - payment {statusLabel(payment?.status)}
                 </p>
               </div>
-              <strong>{money(payment?.amount ?? order.grandTotal)}</strong>
+              <strong>{money(order.grandTotal)}</strong>
             </div>
           ))}
         </div>

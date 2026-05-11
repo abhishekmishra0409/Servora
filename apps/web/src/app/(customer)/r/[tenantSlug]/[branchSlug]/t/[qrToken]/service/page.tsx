@@ -2,14 +2,28 @@
 
 import { useEffect, useState } from 'react';
 
-import { createServiceRequest, getTableContext, type GuestSession, type TableContext } from '@/lib/api-client';
+import {
+  ApiError,
+  createServiceRequest,
+  documentId,
+  getCurrentServiceRequest,
+  getTableContext,
+  joinTable,
+  type CmsServiceRequest,
+  type GuestSession,
+  type TableContext,
+} from '@/lib/api-client';
 import { useCustomerRoute } from '@/lib/customer-route';
 import {
+  clearGuestSession,
+  clearRecentServiceRequest,
   readGuestSession,
   readRecentServiceRequest,
+  writeGuestSession,
   writeRecentServiceRequest,
   type GuestServiceRequest,
 } from '@/lib/customer-storage';
+import { createSocketClient } from '@/lib/socket';
 
 type RequestType = 'assistance' | 'bill' | 'custom' | 'cutlery' | 'water';
 
@@ -72,8 +86,24 @@ const statusLabelFor = (requestType: RequestType): string => {
   return preset?.statusLabel ?? 'REQUESTED';
 };
 
+function requestMatchesActiveSession(request: GuestServiceRequest | null, nextContext: TableContext): boolean {
+  const activeTableSessionId = nextContext.tableSession?.id;
+  return Boolean(request?.tableSessionId && activeTableSessionId && request.tableSessionId === activeTableSessionId);
+}
+
+function serviceRequestSnapshot(request: CmsServiceRequest): GuestServiceRequest {
+  return {
+    createdAt: request.createdAt ?? new Date().toISOString(),
+    requestId: documentId(request),
+    requestType: request.requestType,
+    statusLabel: statusLabelFor(request.requestType as RequestType),
+    ...(request.message ? { message: request.message } : {}),
+    ...(request.tableSessionId ? { tableSessionId: request.tableSessionId } : {}),
+  };
+}
+
 export default function CustomerServicePage() {
-  const { qrToken } = useCustomerRoute();
+  const { basePath, qrToken } = useCustomerRoute();
   const [context, setContext] = useState<TableContext | null>(null);
   const [guest, setGuest] = useState<GuestSession | null>(null);
   const [recentRequest, setRecentRequest] = useState<GuestServiceRequest | null>(null);
@@ -92,13 +122,48 @@ export default function CustomerServicePage() {
     let active = true;
     const session = readGuestSession(qrToken);
     setGuest(session);
-    setRecentRequest(readRecentServiceRequest(qrToken));
 
     getTableContext(qrToken)
-      .then((nextContext) => {
+      .then(async (nextContext) => {
         if (!active) {
           return;
         }
+        const storedRequest = readRecentServiceRequest(qrToken);
+        const activeTableSessionId = nextContext.tableSession?.id;
+        if (session?.tableSessionId && session.tableSessionId !== activeTableSessionId) {
+          clearGuestSession(qrToken);
+          setGuest(null);
+        }
+
+        if (!session?.guestToken || session.tableSessionId !== activeTableSessionId) {
+          clearRecentServiceRequest(qrToken);
+          setRecentRequest(null);
+        } else {
+          const activeRequest = await getCurrentServiceRequest(session.guestToken).catch((nextError: unknown) => {
+            if (nextError instanceof ApiError && [401, 404].includes(nextError.status)) {
+              clearGuestSession(qrToken);
+              setGuest(null);
+              return null;
+            }
+
+            throw nextError;
+          });
+          if (!active) {
+            return;
+          }
+          if (activeRequest) {
+            const nextRequest = serviceRequestSnapshot(activeRequest);
+            writeRecentServiceRequest(qrToken, nextRequest);
+            setRecentRequest(nextRequest);
+          } else if (requestMatchesActiveSession(storedRequest, nextContext)) {
+            clearRecentServiceRequest(qrToken);
+            setRecentRequest(null);
+          } else {
+            clearRecentServiceRequest(qrToken);
+            setRecentRequest(null);
+          }
+        }
+
         setContext(nextContext);
         setNotice('Tap a request or send a custom message.');
       })
@@ -115,11 +180,75 @@ export default function CustomerServicePage() {
     };
   }, [qrToken]);
 
-  async function sendRequest(requestType: RequestType, message?: string): Promise<void> {
-    if (!guest?.guestToken || !context?.tableSession) {
-      setError('Join the table before sending a service request.');
+  useEffect(() => {
+    if (!qrToken || !guest?.guestToken) {
       return;
     }
+
+    const socket = createSocketClient(guest.guestToken);
+    socket.on('service_request.resolved', (payload?: { requestId?: string; tableSessionId?: string }) => {
+      setRecentRequest((current) => {
+        const sameRequest = !payload?.requestId || !current?.requestId || payload.requestId === current.requestId;
+        const sameSession = !payload?.tableSessionId || !current?.tableSessionId || payload.tableSessionId === current.tableSessionId;
+        if (sameRequest && sameSession) {
+          clearRecentServiceRequest(qrToken);
+          setNotice('Your request has been resolved.');
+          return null;
+        }
+
+        return current;
+      });
+    });
+    socket.connect();
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [guest?.guestToken, qrToken]);
+
+  async function reconnectGuestSession(): Promise<GuestSession> {
+    if (!qrToken) {
+      throw new Error('This customer URL is missing a QR token.');
+    }
+
+    setNotice('Reconnecting this device to the table...');
+    const alias = context?.table.tableNo ? `Guest ${context.table.tableNo}` : 'Guest';
+    const nextGuest = await joinTable(qrToken, alias);
+    writeGuestSession(qrToken, nextGuest);
+    setGuest(nextGuest);
+    const nextContext = await getTableContext(qrToken);
+    setContext(nextContext);
+    return nextGuest;
+  }
+
+  async function guestForRequest(): Promise<GuestSession> {
+    if (guest?.guestToken) {
+      return guest;
+    }
+
+    return reconnectGuestSession();
+  }
+
+  async function createRequestWithGuest(body: { message?: string; requestType: RequestType }): Promise<CmsServiceRequest> {
+    let requestGuest = await guestForRequest();
+
+    try {
+      return await createServiceRequest(requestGuest.guestToken, body);
+    } catch (nextError) {
+      if (!(nextError instanceof ApiError) || ![401, 404].includes(nextError.status)) {
+        throw nextError;
+      }
+
+      clearGuestSession(qrToken);
+      setGuest(null);
+      clearRecentServiceRequest(qrToken);
+      setRecentRequest(null);
+      requestGuest = await reconnectGuestSession();
+      return createServiceRequest(requestGuest.guestToken, body);
+    }
+  }
+
+  async function sendRequest(requestType: RequestType, message?: string): Promise<void> {
     if (!qrToken) {
       setError('This customer URL is missing a QR token.');
       return;
@@ -129,15 +258,16 @@ export default function CustomerServicePage() {
     setBusyType(requestType);
     setError('');
     try {
-      const request = await createServiceRequest(
-        guest.guestToken,
-        trimmedMessage ? { message: trimmedMessage, requestType } : { requestType },
-      );
+      const requestBody = trimmedMessage ? { message: trimmedMessage, requestType } : { requestType };
+      const request = await createRequestWithGuest(requestBody);
+      const tableSessionId = request.tableSessionId ?? guest?.tableSessionId ?? context?.tableSession?.id;
 
       const nextRequest: GuestServiceRequest = {
         createdAt: new Date().toISOString(),
+        requestId: documentId(request),
         requestType,
         statusLabel: statusLabelFor(requestType),
+        ...(tableSessionId ? { tableSessionId } : {}),
         ...(request.message || trimmedMessage ? { message: request.message || trimmedMessage || '' } : {}),
       };
 
@@ -148,6 +278,13 @@ export default function CustomerServicePage() {
         setCustomMessage('');
       }
     } catch (nextError) {
+      if (nextError instanceof ApiError && nextError.status === 401) {
+        clearGuestSession(qrToken);
+        setGuest(null);
+        setNotice('This device could not reconnect to the table.');
+        setError('Open the table link again and try once more.');
+        return;
+      }
       setError(nextError instanceof Error ? nextError.message : 'Could not send the request.');
     } finally {
       setBusyType('');
@@ -156,6 +293,8 @@ export default function CustomerServicePage() {
 
   const activeTitle = recentRequest ? titleFor(recentRequest.requestType as RequestType) : 'No active request';
   const activeMessage = recentRequest?.message ?? 'Your latest request will appear here.';
+  const canReconnectToTable = Boolean(qrToken);
+  const canRequest = Boolean(guest?.guestToken || canReconnectToTable);
 
   return (
     <main className="customer-main customer-main--mobile">
@@ -182,11 +321,24 @@ export default function CustomerServicePage() {
       {notice ? <p className="notice-text">{notice}</p> : null}
       {error ? <p className="error-text">{error}</p> : null}
 
+      {!canRequest ? (
+        <section className="customer-panel customer-service-join">
+          <div>
+            <h2>Join table to request service</h2>
+            <p className="muted">Service requests need your table session so staff know where to respond.</p>
+          </div>
+          <a className="button-link" href={basePath || '/'}>
+            Join Table
+            <span className="material-symbols-outlined">arrow_forward</span>
+          </a>
+        </section>
+      ) : null}
+
       <section className="service-grid">
         {presets.map((preset) => (
           <button
             className={`service-card service-card--button ${busyType === preset.requestType ? 'service-card--busy' : ''}`}
-            disabled={busyType !== '' || !guest}
+            disabled={busyType !== ''}
             key={preset.requestType}
             onClick={() => void sendRequest(preset.requestType)}
             type="button"
@@ -206,13 +358,13 @@ export default function CustomerServicePage() {
         <label>
           <span className="sr-only">Custom request message</span>
           <textarea
-            disabled={!guest}
+            disabled={busyType === 'custom'}
             onChange={(event) => setCustomMessage(event.target.value)}
             placeholder="E.g., Extra spicy sauce, please."
             value={customMessage}
           />
         </label>
-        <button disabled={!guest || busyType === 'custom'} onClick={() => void sendRequest('custom', customMessage)} type="button">
+        <button disabled={busyType === 'custom'} onClick={() => void sendRequest('custom', customMessage)} type="button">
           <span className="material-symbols-outlined">send</span>
           Send Request
         </button>

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import type { StaffJwtPayload } from '@restaurent/shared';
 import { UserRole } from '@restaurent/shared';
 
@@ -7,7 +7,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { StaffJwtGuard } from '../../common/guards/staff-jwt.guard';
 import { AccessService } from '../../infrastructure/access/access.service';
-import { CreatePaymentCheckoutDto } from './dto';
+import { CreatePaymentCheckoutDto, MarkPaymentPaidDto } from './dto';
 import { PaymentsService } from './payments.service';
 
 @Controller()
@@ -19,10 +19,17 @@ export class PaymentsController {
   ) {}
 
   @Post('orders/:id/bill-request')
-  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Waiter, UserRole.Cashier)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
   async requestBill(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertOrderAccess(user, id);
     return this.paymentsService.requestBill(id, user.sub);
+  }
+
+  @Get('payments/bills')
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
+  async listBills(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
+    await this.accessService.assertBranchAccess(user, branchId);
+    return this.paymentsService.listBills(branchId);
   }
 
   @Post('payments/checkout-session')
@@ -33,16 +40,27 @@ export class PaymentsController {
   }
 
   @Get('payments/:id')
-  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Waiter, UserRole.Cashier)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
   async getById(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertPaymentAccess(user, id);
     return this.paymentsService.getById(id);
   }
 
   @Post('payments/:id/mark-cash-paid')
-  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Cashier)
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
   async markCashPaid(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertPaymentAccess(user, id);
     return this.paymentsService.markCashPaid(id, user.sub);
+  }
+
+  @Post('payments/:id/mark-paid')
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
+  async markPaid(
+    @Param('id') id: string,
+    @Body() dto: MarkPaymentPaidDto,
+    @CurrentUser() user: StaffJwtPayload,
+  ): Promise<unknown> {
+    await this.accessService.assertPaymentAccess(user, id);
+    return this.paymentsService.markPaid(id, dto.method ?? 'cash', user.sub);
   }
 }

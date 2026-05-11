@@ -24,6 +24,13 @@ export class OrdersController {
     return this.ordersService.getLive(branchId);
   }
 
+  @Get('billable')
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
+  async getBillable(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
+    await this.accessService.assertBranchAccess(user, branchId);
+    return this.ordersService.getBillable(branchId);
+  }
+
   @Get(':id')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Kitchen, UserRole.Cashier)
   async getById(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {

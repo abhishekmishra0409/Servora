@@ -35,6 +35,17 @@ export class OrdersService {
       .exec();
   }
 
+  async getBillable(branchId: string): Promise<Order[]> {
+    return this.orderModel
+      .find({
+        branchId,
+        status: { $in: [OrderStatus.Ready, OrderStatus.Served] },
+      })
+      .sort({ submittedAt: -1 })
+      .lean()
+      .exec();
+  }
+
   async getById(id: string): Promise<Order> {
     const order = await this.orderModel.findById(id).lean().exec();
 

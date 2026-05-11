@@ -19,8 +19,16 @@ export class StaffService {
     private readonly billingService: BillingService,
   ) {}
 
-  async list(branchId: string): Promise<unknown[]> {
-    const memberships = await this.membershipModel.find({ branchId }).sort({ role: 1 }).lean().exec();
+  async list(branchId: string, tenantId: string, actor: StaffJwtPayload): Promise<unknown[]> {
+    const memberships = await this.membershipModel
+      .find({
+        branchId,
+        tenantId,
+        ...(actor.role === UserRole.SuperAdmin ? {} : { role: { $nin: this.platformRoles() } }),
+      })
+      .sort({ role: 1 })
+      .lean()
+      .exec();
     const userIds = memberships.map((membership) => String(membership.userId));
     const users = await this.userModel.find({ _id: { $in: userIds } }).lean<Record<string, any>[]>().exec();
     const userMap = new Map(users.map((user) => [String(user._id), user]));
@@ -102,6 +110,7 @@ export class StaffService {
     if (!membership) {
       throw new NotFoundException('Staff membership not found');
     }
+    this.assertCanManageMembership(membership, actor);
 
     if (dto.role) {
       this.assertCanAssignRole(dto.role, actor.role);
@@ -140,12 +149,14 @@ export class StaffService {
     };
   }
 
-  async delete(id: string, actorUserId?: string): Promise<{ success: boolean }> {
-    const membership = await this.membershipModel.findByIdAndDelete(id).exec();
+  async delete(id: string, actor: StaffJwtPayload): Promise<{ success: boolean }> {
+    const membership = await this.membershipModel.findById(id).exec();
     if (membership) {
+      this.assertCanManageMembership(membership, actor);
+      await membership.deleteOne();
       await this.auditService.record({
         action: 'staff.deleted',
-        actorUserId,
+        actorUserId: actor.sub,
         branchId: membership.branchId,
         entityId: membership.userId,
         entityType: 'user',
@@ -155,9 +166,22 @@ export class StaffService {
     return { success: true };
   }
 
+  private platformRoles(): UserRole[] {
+    return [UserRole.SuperAdmin, UserRole.PlatformAdmin];
+  }
+
+  private isPlatformRole(role: UserRole): boolean {
+    return this.platformRoles().includes(role);
+  }
+
+  private assertCanManageMembership(membership: Membership, actor: StaffJwtPayload): void {
+    if (actor.role !== UserRole.SuperAdmin && this.isPlatformRole(membership.role)) {
+      throw new ForbiddenException('Only a super admin can manage platform staff');
+    }
+  }
+
   private assertCanAssignRole(targetRole: UserRole, actorRole: UserRole): void {
-    const platformRoles = [UserRole.SuperAdmin, UserRole.PlatformAdmin];
-    if (platformRoles.includes(targetRole) && actorRole !== UserRole.SuperAdmin) {
+    if (this.isPlatformRole(targetRole) && actorRole !== UserRole.SuperAdmin) {
       throw new ForbiddenException('Only a super admin can assign platform roles');
     }
   }

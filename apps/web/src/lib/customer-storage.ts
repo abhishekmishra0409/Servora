@@ -3,8 +3,10 @@ import type { GuestSession, SubmittedOrder } from './api-client';
 export interface GuestServiceRequest {
   createdAt: string;
   message?: string;
+  requestId?: string;
   requestType: string;
   statusLabel: string;
+  tableSessionId?: string;
 }
 
 const sessionKey = (qrToken: string): string => `restaurent:guest:${qrToken}`;
@@ -122,4 +124,8 @@ export function readRecentServiceRequest(qrToken: string): GuestServiceRequest |
 
 export function writeRecentServiceRequest(qrToken: string, request: GuestServiceRequest): void {
   window.localStorage.setItem(serviceRequestKey(qrToken), JSON.stringify(request));
+}
+
+export function clearRecentServiceRequest(qrToken: string): void {
+  window.localStorage.removeItem(serviceRequestKey(qrToken));
 }

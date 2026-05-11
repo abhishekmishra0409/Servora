@@ -123,6 +123,7 @@ export interface LiveOrder {
   status: string;
   submittedAt?: string;
   tableId: string;
+  tableSessionId?: string;
 }
 
 export interface StaffSession {
@@ -179,6 +180,24 @@ export interface CmsServiceRequest {
   requestType: string;
   status: string;
   tableId: string;
+  tableSessionId?: string;
+}
+
+export interface CmsBill {
+  _id?: string;
+  amount: number;
+  branchId: string;
+  currency: string;
+  id?: string;
+  method: string;
+  orderIds: string[];
+  orders: LiveOrder[];
+  paymentId?: string;
+  provider: string;
+  status: string;
+  tableId: string;
+  tableSessionId: string;
+  tenantId: string;
 }
 
 export interface CmsStaffMember {
@@ -338,9 +357,12 @@ export interface PaymentSnapshot {
   currency: string;
   id?: string;
   method: string;
-  orderId: string;
+  orderId?: string;
+  orderIds?: string[];
   provider: string;
   status: string;
+  tableId?: string;
+  tableSessionId?: string;
 }
 
 export interface MediaUploadSignature {
@@ -352,6 +374,7 @@ export interface MediaUploadSignature {
 }
 
 interface ApiOptions extends RequestInit {
+  skipAuthRefresh?: boolean;
   token?: string;
 }
 
@@ -365,14 +388,6 @@ export class ApiError extends Error {
     super(message);
   }
 }
-
-const storedCmsToken = (): string => {
-  if (typeof window === 'undefined') {
-    return '';
-  }
-
-  return window.localStorage.getItem(cmsTokenKey) ?? '';
-};
 
 const clearCmsAuth = (): void => {
   if (typeof window === 'undefined') {
@@ -449,7 +464,7 @@ function requestHeaders(options: ApiOptions, tokenOverride?: string): Headers {
     headers.set('Content-Type', 'application/json');
   }
 
-  const authToken = tokenOverride ?? (options.token ? storedCmsToken() || options.token : '');
+  const authToken = tokenOverride ?? options.token ?? '';
   if (authToken) {
     headers.set('Authorization', `Bearer ${authToken}`);
   }
@@ -457,17 +472,25 @@ function requestHeaders(options: ApiOptions, tokenOverride?: string): Headers {
   return headers;
 }
 
+function fetchOptionsFrom(options: ApiOptions): RequestInit {
+  const requestOptions: RequestInit = { ...options };
+  delete (requestOptions as ApiOptions).skipAuthRefresh;
+  delete (requestOptions as ApiOptions).token;
+  return requestOptions;
+}
+
 export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  const fetchOptions = fetchOptionsFrom(options);
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
+    ...fetchOptions,
     headers: requestHeaders(options),
   });
 
-  if (response.status === 401 && options.token) {
+  if (response.status === 401 && options.token && !options.skipAuthRefresh) {
     const nextToken = await refreshCmsAccessToken();
     if (nextToken) {
       const retryResponse = await fetch(`${API_BASE_URL}${path}`, {
-        ...options,
+        ...fetchOptions,
         headers: requestHeaders(options, nextToken),
       });
       return readJsonResponse<T>(retryResponse);
@@ -503,6 +526,7 @@ export const addBucketItem = (
   apiRequest<TableContext['tableSession']>(`/buckets/${tableSessionId}/items`, {
     body: JSON.stringify(body),
     method: 'POST',
+    skipAuthRefresh: true,
     token,
   });
 
@@ -515,6 +539,7 @@ export const updateBucketItem = (
   apiRequest<TableContext['tableSession']>(`/buckets/${tableSessionId}/items/${itemId}`, {
     body: JSON.stringify(body),
     method: 'PATCH',
+    skipAuthRefresh: true,
     token,
   });
 
@@ -525,6 +550,7 @@ export const removeBucketItem = (
 ): Promise<TableContext['tableSession']> =>
   apiRequest<TableContext['tableSession']>(`/buckets/${tableSessionId}/items/${itemId}`, {
     method: 'DELETE',
+    skipAuthRefresh: true,
     token,
   });
 
@@ -537,6 +563,7 @@ export const submitBucket = (
     body: JSON.stringify({ paymentMethod: 'pay_later' }),
     headers: { 'Idempotency-Key': idempotencyKey },
     method: 'POST',
+    skipAuthRefresh: true,
     token,
   });
 
@@ -557,6 +584,13 @@ export const createServiceRequest = (token: string, body: { message?: string; re
   apiRequest<CmsServiceRequest>('/service-requests', {
     body: JSON.stringify(body),
     method: 'POST',
+    skipAuthRefresh: true,
+    token,
+  });
+
+export const getCurrentServiceRequest = (token: string): Promise<CmsServiceRequest | null> =>
+  apiRequest<CmsServiceRequest | null>('/service-requests/current', {
+    skipAuthRefresh: true,
     token,
   });
 
@@ -579,6 +613,15 @@ export const changeCmsPassword = (
 
 export const getLiveOrders = (branchId: string, token: string): Promise<LiveOrder[]> =>
   apiRequest<LiveOrder[]>(`/orders/live?branchId=${encodeURIComponent(branchId)}`, { token });
+
+export const getBillableOrders = (branchId: string, token: string): Promise<LiveOrder[]> =>
+  apiRequest<LiveOrder[]>(`/orders/billable?branchId=${encodeURIComponent(branchId)}`, { token });
+
+export const getBills = (branchId: string, token: string): Promise<CmsBill[]> =>
+  apiRequest<CmsBill[]>(`/payments/bills?branchId=${encodeURIComponent(branchId)}`, { token });
+
+export const getOrderById = (id: string, token: string): Promise<LiveOrder> =>
+  apiRequest<LiveOrder>(`/orders/${encodeURIComponent(id)}`, { token });
 
 export const confirmOrder = (id: string, token: string): Promise<LiveOrder> =>
   apiRequest<LiveOrder>(`/orders/${id}/confirm`, { method: 'POST', token });
@@ -612,6 +655,13 @@ export const getPayment = (paymentId: string, token: string): Promise<PaymentSna
 
 export const markCashPaid = (paymentId: string, token: string): Promise<PaymentSnapshot> =>
   apiRequest<PaymentSnapshot>(`/payments/${paymentId}/mark-cash-paid`, { method: 'POST', token });
+
+export const markPaymentPaid = (paymentId: string, method: string, token: string): Promise<PaymentSnapshot> =>
+  apiRequest<PaymentSnapshot>(`/payments/${paymentId}/mark-paid`, {
+    body: JSON.stringify({ method }),
+    method: 'POST',
+    token,
+  });
 
 export const signMediaUpload = (token: string, folder?: string): Promise<MediaUploadSignature> =>
   apiRequest<MediaUploadSignature>('/media/sign-upload', {

@@ -1,4 +1,4 @@
-import { IsObject, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsObject, IsOptional, IsString } from 'class-validator';
 import { BranchServiceMode } from '@restaurent/shared';
 
 export class UpdateBranchDto {
@@ -7,7 +7,7 @@ export class UpdateBranchDto {
   name?: string;
 
   @IsOptional()
-  @IsString()
+  @IsEnum(BranchServiceMode)
   serviceMode?: BranchServiceMode;
 
   @IsOptional()

@@ -193,7 +193,7 @@ export function CustomerMenuClient({
         </a>
       </section>
 
-      <section className="toolbar compact-toolbar">
+      <section className="toolbar compact-toolbar customer-menu-toolbar">
         <label className="customer-search-field">
           <span className="material-symbols-outlined">search</span>
           <input
@@ -203,7 +203,7 @@ export function CustomerMenuClient({
             value={query}
           />
         </label>
-        <div className="segmented-control" role="tablist">
+        <div className="segmented-control customer-category-tabs" role="tablist">
           <button className={activeCategory === 'all' ? 'active' : ''} onClick={() => setActiveCategory('all')} type="button">
             All
           </button>

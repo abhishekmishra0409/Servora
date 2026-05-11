@@ -40,7 +40,8 @@ flowchart TD
   F --> G[Bucket submitted]
   G --> H{Branch service mode}
   H -->|Waiter confirmed| I[Order waits for waiter confirmation]
-  H -->|Self-service / hybrid| J[Order accepted]
+  H -->|Self-service| J[Order accepted]
+  H -->|Hybrid| I
   I --> K[Waiter confirms or rejects]
   J --> L[Kitchen sees ticket]
   K --> L

@@ -68,11 +68,11 @@ export default function TablesPage() {
         const url = qrToken ? `${nextOrigin.replace(/\/$/, '')}/r/${nextTenant.slug}/${nextBranch.slug}/t/${qrToken}` : '';
         const dataUrl = url
           ? await QRCode.toDataURL(url, {
-              color: { dark: '#111c2d', light: '#ffffff' },
-              errorCorrectionLevel: 'M',
-              margin: 2,
-              width: 220,
-            })
+            color: { dark: '#111c2d', light: '#ffffff' },
+            errorCorrectionLevel: 'M',
+            margin: 2,
+            width: 220,
+          })
           : '';
         return [documentId(table), dataUrl] as const;
       }),
@@ -120,7 +120,7 @@ export default function TablesPage() {
     setToken(settings.token);
     void load(settings.tenantId, settings.branchId, settings.token, origin);
     const socket = settings.token ? createSocketClient(settings.token) : null;
-    ['table.status_changed', 'floor.changed', 'order.created', 'order.status_updated'].forEach((event) => {
+    ['table.status_changed', 'floor.changed', 'order.created', 'order.status_updated', 'payment.status_updated'].forEach((event) => {
       socket?.on(event, () => void load(settings.tenantId, settings.branchId, settings.token, origin));
     });
     socket?.connect();
@@ -227,33 +227,33 @@ export default function TablesPage() {
           const url = customerUrl(table.qrToken);
 
           return (
-          <article className="cms-table-card" key={tableId}>
-            <div className="cms-table-card__head">
-              <div>
-                <h2>Table {table.tableNo}</h2>
-                <p className="muted">{table.capacity} seats</p>
+            <article className="cms-table-card" key={tableId}>
+              <div className="cms-table-card__head">
+                <div>
+                  <h2>Table {table.tableNo}</h2>
+                  <p className="muted">{table.capacity} seats</p>
+                </div>
+                <span className="cms-status">{table.status.replaceAll('_', ' ')}</span>
               </div>
-              <span className="cms-status">{table.status.replaceAll('_', ' ')}</span>
-            </div>
-            <div className="cms-qr-preview" aria-label={`QR preview for table ${table.tableNo}`}>
-              {qrImages[tableId] ? (
-                <img alt={`Customer QR code for table ${table.tableNo}`} src={qrImages[tableId]} />
-              ) : (
-                <span className="material-symbols-outlined" aria-hidden="true">qr_code_2</span>
-              )}
-            </div>
-            <div className="cms-qr-link">
-              <strong>{table.qrToken ?? 'No QR token'}</strong>
-              {url ? <a href={url} target="_blank" rel="noreferrer">{url}</a> : null}
-            </div>
-            {canManageTables ? (
-              <div className="action-row">
-                <button className="button-secondary" onClick={() => edit(table)} type="button">Edit</button>
-                <button className="button-secondary" onClick={() => void regenerate(table)} type="button">Regenerate QR</button>
-                <button className="danger-button" onClick={() => void remove(table)} type="button">Delete</button>
+              <div className="cms-qr-preview" aria-label={`QR preview for table ${table.tableNo}`}>
+                {qrImages[tableId] ? (
+                  <img alt={`Customer QR code for table ${table.tableNo}`} src={qrImages[tableId]} />
+                ) : (
+                  <span className="material-symbols-outlined" aria-hidden="true">qr_code_2</span>
+                )}
               </div>
-            ) : null}
-          </article>
+              <div className="cms-qr-link">
+                <strong>{table.qrToken ?? 'No QR token'}</strong>
+                {url ? <a href={url} target="_blank" rel="noreferrer">{url}</a> : null}
+              </div>
+              {canManageTables ? (
+                <div className="action-row">
+                  <button className="button-secondary" onClick={() => edit(table)} type="button">Edit</button>
+                  <button className="button-secondary" onClick={() => void regenerate(table)} type="button">Regenerate QR</button>
+                  <button className="danger-button" onClick={() => void remove(table)} type="button">Delete</button>
+                </div>
+              ) : null}
+            </article>
           );
         })}
       </section>

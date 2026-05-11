@@ -2,8 +2,8 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import type { GuestJwtPayload, GuestSession, BranchServiceMode } from '@restaurent/shared';
-import { OrderStatus, SOCKET_EVENTS } from '@restaurent/shared';
+import type { GuestJwtPayload, GuestSession } from '@restaurent/shared';
+import { BranchServiceMode, OrderStatus, SOCKET_EVENTS, TableStatus } from '@restaurent/shared';
 import { ClientSession, Connection, Model } from 'mongoose';
 
 import { makeId } from '../../common/utils/id';
@@ -90,6 +90,8 @@ export class SessionsService {
         tenantId: qrCode.tenantId,
       });
     }
+
+    await this.markTableOccupiedIfFree(qrCode);
 
     const participantId = makeId('participant');
     session.participants.push({
@@ -272,6 +274,25 @@ export class SessionsService {
     session.bucket.totals = totals;
   }
 
+  private async markTableOccupiedIfFree(qrCode: QrCode): Promise<void> {
+    const table = await this.tableModel
+      .findOneAndUpdate(
+        { _id: qrCode.tableId, status: TableStatus.Free },
+        { status: TableStatus.Occupied },
+        { returnDocument: 'after' },
+      )
+      .exec();
+
+    if (!table) {
+      return;
+    }
+
+    await this.realtimePublisher.publishRealtimeEvent(`branch:${qrCode.branchId}`, 'table.status_changed', {
+      status: TableStatus.Occupied,
+      tableId: String(table._id),
+    });
+  }
+
   private async submitBucketInternal(
     user: GuestJwtPayload,
     dto: SubmitBucketDto,
@@ -330,8 +351,7 @@ export class SessionsService {
 
     const serviceMode = branch.serviceMode as BranchServiceMode;
     const nextCounterValue = counter?.value ?? 1;
-    const status =
-      serviceMode === 'waiter_confirmed' ? OrderStatus.PendingConfirmation : OrderStatus.Accepted;
+    const status = this.initialOrderStatus(serviceMode);
 
     const createdOrder = await this.createOrderDocument(
       tableSession,
@@ -392,6 +412,12 @@ export class SessionsService {
     return /Transaction numbers are only allowed on a replica set member or mongos/i.test(
       error.message,
     );
+  }
+
+  private initialOrderStatus(serviceMode: BranchServiceMode): OrderStatus {
+    return serviceMode === BranchServiceMode.SelfService
+      ? OrderStatus.Accepted
+      : OrderStatus.PendingConfirmation;
   }
 
   private async createOrderDocument(

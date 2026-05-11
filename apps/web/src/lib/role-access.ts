@@ -90,7 +90,7 @@ export const appNavLinks: AppNavLink[] = [
     icon: 'payments',
     label: 'Bills',
     permissions: [PERMISSIONS.billing, PERMISSIONS.orderManage],
-    roles: [...ownerRoles, UserRole.Waiter, UserRole.Cashier],
+    roles: [...managerRoles, UserRole.Waiter, UserRole.Cashier],
   },
   { href: '/tables', icon: 'table_restaurant', label: 'Tables', permissions: [PERMISSIONS.tableManage], roles: waiterRoles },
   { href: '/floors', icon: 'layers', label: 'Floors', permissions: [PERMISSIONS.tableManage], roles: managerRoles },

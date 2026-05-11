@@ -4,6 +4,8 @@ import { PaymentStatus } from '@restaurent/shared';
 
 import { Branch } from './branch.schema';
 import { Order } from './order.schema';
+import { TableSession } from './table-session.schema';
+import { RestaurantTable } from './table.schema';
 import { Tenant } from './tenant.schema';
 
 export type PaymentDocument = HydratedDocument<Payment>;
@@ -18,6 +20,15 @@ export class Payment {
 
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: Order.name, index: true })
   orderId?: string;
+
+  @Prop({ type: [MongooseSchema.Types.ObjectId], ref: Order.name, default: [], index: true })
+  orderIds!: string[];
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: TableSession.name, index: true })
+  tableSessionId?: string;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: RestaurantTable.name, index: true })
+  tableId?: string;
 
   @Prop({ required: true })
   provider!: string;
@@ -39,3 +50,4 @@ export class Payment {
 }
 
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
+PaymentSchema.index({ branchId: 1, tableSessionId: 1, status: 1 });

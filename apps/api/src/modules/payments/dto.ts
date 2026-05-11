@@ -9,3 +9,8 @@ export class CreatePaymentCheckoutDto {
   provider?: string;
 }
 
+export class MarkPaymentPaidDto {
+  @IsOptional()
+  @IsIn(['cash', 'card', 'upi', 'manual'])
+  method?: string;
+}

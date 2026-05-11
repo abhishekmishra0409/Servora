@@ -2,13 +2,17 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-import { getLiveOrders, type LiveOrder } from '../../../lib/api-client';
+import { getLiveOrders, getOrderById, type LiveOrder } from '../../../lib/api-client';
 import { readCmsSettings, writeCmsSettings } from '../../../lib/cms-storage';
 import { formatOrderNumber } from '../../../lib/order-number';
 import { createSocketClient } from '../../../lib/socket';
 
 const money = (value: number): string =>
   new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
+
+const liveStatuses = new Set(['accepted', 'pending_confirmation', 'preparing', 'ready']);
+
+const orderKey = (order: LiveOrder): string => order.id ?? order._id ?? '';
 
 export default function DashboardPage() {
   const [branchId, setBranchId] = useState('');
@@ -24,9 +28,15 @@ export default function DashboardPage() {
       void load(settings.branchId, settings.token);
     }
     const socket = settings.token ? createSocketClient(settings.token) : null;
-    socket?.on('order.created', () => void load(settings.branchId, settings.token));
-    socket?.on('order.status_updated', () => void load(settings.branchId, settings.token));
-    socket?.on('service_request.created', () => void load(settings.branchId, settings.token));
+    const syncOrderEvent = (payload?: { orderId?: string }): void => {
+      if (payload?.orderId) {
+        void syncOrder(payload.orderId, settings.branchId, settings.token);
+        return;
+      }
+      void load(settings.branchId, settings.token);
+    };
+    socket?.on('order.created', syncOrderEvent);
+    socket?.on('order.status_updated', syncOrderEvent);
     socket?.connect();
     return () => {
       socket?.disconnect();
@@ -62,6 +72,33 @@ export default function DashboardPage() {
       setOrders([]);
       setMessage(error instanceof Error ? error.message : 'Could not load dashboard data.');
     }
+  }
+
+  async function syncOrder(orderId: string, nextBranchId = branchId, nextToken = token): Promise<void> {
+    if (!nextBranchId || !nextToken) {
+      return;
+    }
+
+    try {
+      const order = await getOrderById(orderId, nextToken);
+      setOrders((currentOrders) => {
+        const nextOrders = liveStatuses.has(order.status)
+          ? upsertOrder(currentOrders, order)
+          : currentOrders.filter((currentOrder) => orderKey(currentOrder) !== orderKey(order));
+        setMessage(nextOrders.length ? '' : 'No live order activity yet.');
+        return nextOrders;
+      });
+    } catch {
+      void load(nextBranchId, nextToken);
+    }
+  }
+
+  function upsertOrder(currentOrders: LiveOrder[], order: LiveOrder): LiveOrder[] {
+    const nextOrderKey = orderKey(order);
+    const withoutExisting = currentOrders.filter((currentOrder) => orderKey(currentOrder) !== nextOrderKey);
+    return [order, ...withoutExisting].sort(
+      (left, right) => new Date(right.submittedAt ?? 0).getTime() - new Date(left.submittedAt ?? 0).getTime(),
+    );
   }
 
   return (

@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { StaffJwtPayload } from '@restaurent/shared';
-import { UserRole } from '@restaurent/shared';
+import { SubscriptionStatus, UserRole } from '@restaurent/shared';
 import { Model } from 'mongoose';
 
 import { Branch } from '../../database/schemas/branch.schema';
@@ -11,8 +11,15 @@ import { MenuCategory } from '../../database/schemas/menu-category.schema';
 import { MenuItem } from '../../database/schemas/menu-item.schema';
 import { Order } from '../../database/schemas/order.schema';
 import { Payment } from '../../database/schemas/payment.schema';
+import { Subscription } from '../../database/schemas/subscription.schema';
 import { RestaurantTable } from '../../database/schemas/table.schema';
 import { Tenant } from '../../database/schemas/tenant.schema';
+
+const healthySubscriptionStatuses = [
+  SubscriptionStatus.Active,
+  SubscriptionStatus.GracePeriod,
+  SubscriptionStatus.Trialing,
+];
 
 @Injectable()
 export class AccessService {
@@ -25,8 +32,9 @@ export class AccessService {
     @InjectModel(Floor.name) private readonly floorModel: Model<Floor>,
     @InjectModel(MenuItem.name) private readonly menuItemModel: Model<MenuItem>,
     @InjectModel(MenuCategory.name) private readonly menuCategoryModel: Model<MenuCategory>,
+    @InjectModel(Subscription.name) private readonly subscriptionModel: Model<Subscription>,
     @InjectModel(Tenant.name) private readonly tenantModel: Model<Tenant>,
-  ) {}
+  ) { }
 
   private isGlobalAdmin(user: StaffJwtPayload): boolean {
     return [UserRole.SuperAdmin, UserRole.PlatformAdmin].includes(user.role);
@@ -71,9 +79,26 @@ export class AccessService {
     }
 
     const tenant = await this.tenantModel.findById(tenantId).select('status').lean().exec();
-    if (tenant?.status && tenant.status !== 'active') {
-      throw new ForbiddenException('Subscription inactive. Update payment method to restore access.');
+    if (!tenant?.status || tenant.status === 'active') {
+      return;
     }
+
+    if (tenant.status !== 'archived') {
+      const hasHealthySubscription = await this.subscriptionModel
+        .exists({
+          provider: 'stripe',
+          status: { $in: healthySubscriptionStatuses },
+          $expr: { $eq: [{ $toString: '$tenantId' }, tenantId] },
+        })
+        .exec();
+
+      if (hasHealthySubscription) {
+        await this.tenantModel.updateOne({ _id: tenantId }, { $set: { status: 'active' } }).exec();
+        return;
+      }
+    }
+
+    throw new ForbiddenException('Subscription inactive. Update payment method to restore access.');
   }
 
   private async assertTenantSubscriptionUsable(user: StaffJwtPayload, tenantId: string): Promise<void> {
