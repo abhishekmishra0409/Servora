@@ -3,7 +3,7 @@
 ## SaaS Billing
 
 - Stripe is used for SaaS subscriptions, hosted checkout flows, and customer portal access.
-- Stripe webhooks queue `billing.reconcile_subscription` jobs so subscription writes happen outside the request path.
+- Stripe webhooks reconcile subscription writes in the API request path for the MVP runtime.
 - Supported subscription states: `trialing`, `active`, `grace_period`, `past_due`, `suspended`, and `cancelled`.
 
 ## Restaurant Order Payments

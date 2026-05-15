@@ -3,17 +3,15 @@
 ## Active Apps
 
 - Deploy only `apps/api` and `apps/web` as Node.js applications.
-- Keep MongoDB and Redis available to the API; Redis is used for BullMQ and realtime pub/sub.
-- `apps/realtime`, `apps/worker`, `apps/waiter`, and `apps/kitchen` are archived reference folders and are not active deploy targets.
+- Keep MongoDB available to the API.
 
 ## API Deployment
 
 - Build with `npm run build:api`.
 - Start with `npm run start:api`.
-- Set `EMBEDDED_WORKERS=true` so the API process runs BullMQ processors.
-- Set `MONGODB_URI`, `MONGODB_DB_NAME`, `REDIS_URL`, JWT secrets, `WEB_URL`, `CORS_ORIGINS`, Stripe keys, and Cloudinary keys.
+- Set `MONGODB_URI`, `MONGODB_DB_NAME`, JWT secrets, `WEB_URL`, `CORS_ORIGINS`, Stripe keys, and Cloudinary keys.
 - Keep `/api/v1/webhooks/stripe` publicly reachable and verify signatures with `STRIPE_WEBHOOK_SECRET`.
-- Use `/api/v1/ready` for readiness; it checks MongoDB and Redis.
+- Use `/api/v1/ready` for readiness; it checks MongoDB.
 
 ## Web Deployment
 
@@ -24,11 +22,10 @@
 
 ## Docker Compose
 
-- `docker compose up --build` starts MongoDB, Redis, API, and web only.
+- `docker compose up --build` starts MongoDB, API, and web only.
 - The API container exposes `4000`; the web container exposes `3000`.
 
 ## Operations
 
 - Backup MongoDB with `npm run backup:mongo`. Set `BACKUP_DIR` to choose the target folder.
 - Restore a dump with `npm run restore:mongo -- <backup-directory>`.
-- Keep Redis persistent enough for BullMQ retries and realtime stream delivery.

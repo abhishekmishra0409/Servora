@@ -1,7 +1,4 @@
-import { cookies } from 'next/headers';
-
-import type { GuestSession, TableContext } from '@/lib/api-client';
-import { guestSessionCookieName } from '@/lib/customer-storage';
+import type { TableContext } from '@/lib/api-client';
 
 import { CustomerBucketClient } from './customer-bucket-client';
 
@@ -33,35 +30,19 @@ async function loadInitialContext(qrToken: string): Promise<{ context: TableCont
   }
 }
 
-async function readInitialGuest(qrToken: string): Promise<GuestSession | null> {
-  const raw = (await cookies()).get(guestSessionCookieName(qrToken))?.value;
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(decodeURIComponent(raw)) as GuestSession;
-  } catch {
-    return null;
-  }
-}
-
 export default async function CustomerBucketPage({
   params,
 }: {
   params: Promise<{ branchSlug: string; qrToken: string; tenantSlug: string }>;
 }) {
   const resolvedParams = await params;
-  const [initialContext, initialGuest] = await Promise.all([
-    loadInitialContext(resolvedParams.qrToken),
-    readInitialGuest(resolvedParams.qrToken),
-  ]);
+  const initialContext = await loadInitialContext(resolvedParams.qrToken);
 
   return (
     <CustomerBucketClient
       initialContext={initialContext.context}
       initialError={initialContext.error}
-      initialGuest={initialGuest}
+      initialGuest={null}
     />
   );
 }

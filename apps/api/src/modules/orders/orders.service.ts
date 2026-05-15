@@ -5,7 +5,6 @@ import { Model } from 'mongoose';
 
 import { Order } from '../../database/schemas/order.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
-import { QueueService } from '../../infrastructure/queue/queue.service';
 import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
 
 @Injectable()
@@ -13,7 +12,6 @@ export class OrdersService {
   constructor(
     @InjectModel(Order.name) private readonly orderModel: Model<Order>,
     private readonly auditService: AuditService,
-    private readonly queueService: QueueService,
     private readonly realtimePublisher: RealtimePublisher,
   ) {}
 
@@ -105,22 +103,6 @@ export class OrdersService {
   private async afterStatusChange(order: Order & { _id?: unknown }, actorUserId: string | undefined, action: string): Promise<void> {
     const orderId = String(order._id ?? '');
     await Promise.all([
-      this.queueService.enqueueNotificationJob(
-        'notifications.order_status_updated',
-        {
-          branchId: order.branchId,
-          orderId,
-          status: order.status,
-          tableSessionId: order.tableSessionId,
-          tenantId: order.tenantId,
-        },
-        { jobId: `order-status:${orderId}:${order.status}` },
-      ),
-      this.queueService.enqueueAnalyticsJob(
-        'analytics.refresh_branch_rollup',
-        { branchId: order.branchId, tenantId: order.tenantId },
-        { jobId: `analytics-refresh:${order.branchId}:${Date.now()}` },
-      ),
       this.realtimePublisher.publishRealtimeEvent(`branch:${order.branchId}`, SOCKET_EVENTS.orderStatusUpdated, {
         orderId,
         status: order.status,

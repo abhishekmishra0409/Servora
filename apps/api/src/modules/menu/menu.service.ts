@@ -5,7 +5,6 @@ import { Model } from 'mongoose';
 import { MenuCategory } from '../../database/schemas/menu-category.schema';
 import { MenuItem } from '../../database/schemas/menu-item.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
-import { QueueService } from '../../infrastructure/queue/queue.service';
 import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
 import { CreateCategoryDto, CreateMenuItemDto, UpdateCategoryDto, UpdateMenuItemDto } from './dto';
 
@@ -17,7 +16,6 @@ export class MenuService {
     @InjectModel(MenuCategory.name) private readonly categoryModel: Model<MenuCategory>,
     @InjectModel(MenuItem.name) private readonly itemModel: Model<MenuItem>,
     private readonly auditService: AuditService,
-    private readonly queueService: QueueService,
     private readonly realtimePublisher: RealtimePublisher,
   ) { }
 
@@ -152,23 +150,12 @@ export class MenuService {
   }
 
   async updateItem(id: string, dto: UpdateMenuItemDto): Promise<MenuItem> {
-    const previous = await this.itemModel.findById(id).lean<LeanMenuItem>().exec();
     const item = await this.itemModel
       .findByIdAndUpdate(id, dto, { returnDocument: 'after' })
       .exec();
 
     if (!item) {
       throw new NotFoundException('Menu item not found');
-    }
-
-    const previousUrl = typeof previous?.media?.url === 'string' ? previous.media.url : '';
-    const nextUrl = typeof (item.media as { url?: unknown } | undefined)?.url === 'string' ? String((item.media as { url?: unknown }).url) : '';
-    if (previousUrl && previousUrl !== nextUrl) {
-      await this.queueService.enqueueMediaJob(
-        'media.cleanup_cloudinary_asset',
-        { menuItemId: String(item._id), url: previousUrl },
-        { jobId: `media-cleanup:${String(item._id)}:${previousUrl}` },
-      );
     }
     await this.auditService.record({
       action: 'menu_item.updated',
@@ -187,15 +174,7 @@ export class MenuService {
 
   async deleteItem(id: string): Promise<{ success: boolean }> {
     const item = await this.itemModel.findByIdAndDelete(id).exec();
-    const mediaUrl = typeof (item?.media as { url?: unknown } | undefined)?.url === 'string' ? String((item?.media as { url?: unknown }).url) : '';
     if (item) {
-      if (mediaUrl) {
-        await this.queueService.enqueueMediaJob(
-          'media.cleanup_cloudinary_asset',
-          { menuItemId: String(item._id), url: mediaUrl },
-          { jobId: `media-cleanup:${String(item._id)}:${mediaUrl}` },
-        );
-      }
       await this.auditService.record({
         action: 'menu_item.deleted',
         branchId: item.branchId,

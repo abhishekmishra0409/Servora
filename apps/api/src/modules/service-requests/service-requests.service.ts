@@ -7,7 +7,6 @@ import { Model } from 'mongoose';
 import { ServiceRequest } from '../../database/schemas/service-request.schema';
 import { TableSession } from '../../database/schemas/table-session.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
-import { QueueService } from '../../infrastructure/queue/queue.service';
 import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
 import { PaymentsService } from '../payments/payments.service';
 import { CreateServiceRequestDto } from './dto';
@@ -21,7 +20,6 @@ export class ServiceRequestsService {
     private readonly tableSessionModel: Model<TableSession>,
     private readonly auditService: AuditService,
     private readonly paymentsService: PaymentsService,
-    private readonly queueService: QueueService,
     private readonly realtimePublisher: RealtimePublisher,
   ) {}
 
@@ -48,16 +46,6 @@ export class ServiceRequestsService {
       dto.requestType === 'bill'
         ? this.paymentsService.requestBillForTableSession(user.tableSessionId, user.participantId).catch(() => null)
         : Promise.resolve(null),
-      this.queueService.enqueueNotificationJob(
-        'notifications.service_request_created',
-        {
-          branchId: request.branchId,
-          requestId: String(request._id),
-          tableId: request.tableId,
-          tenantId: request.tenantId,
-        },
-        { jobId: `service-request-created:${String(request._id)}` },
-      ),
       this.realtimePublisher.publishRealtimeEvent(`branch:${request.branchId}`, SOCKET_EVENTS.serviceRequestCreated, {
         requestId: String(request._id),
         status: request.status,
@@ -115,16 +103,6 @@ export class ServiceRequestsService {
     }
 
     await Promise.all([
-      this.queueService.enqueueNotificationJob(
-        'notifications.service_request_resolved',
-        {
-          branchId: request.branchId,
-          requestId: String(request._id),
-          tableId: request.tableId,
-          tenantId: request.tenantId,
-        },
-        { jobId: `service-request-resolved:${String(request._id)}` },
-      ),
       this.realtimePublisher.publishRealtimeEvent(`branch:${request.branchId}`, SOCKET_EVENTS.serviceRequestResolved, {
         requestId: String(request._id),
         status: request.status,

@@ -46,7 +46,6 @@ describe('SessionsService table status realtime events', () => {
       { getOrThrow: jest.fn().mockReturnValue('test-secret') } as never,
       {} as never,
       { assertTenantActive: jest.fn().mockResolvedValue(undefined) } as never,
-      {} as never,
       { publishRealtimeEvent } as never,
     );
 
@@ -64,6 +63,7 @@ describe('SessionsService table status realtime events', () => {
       { returnDocument: 'after' },
     );
     expect(publishRealtimeEvent).toHaveBeenCalledWith('branch:branch-1', 'table.status_changed', {
+      source: 'table_session_join',
       status: TableStatus.Occupied,
       tableId: 'table-1',
     });

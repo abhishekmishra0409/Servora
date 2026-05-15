@@ -120,7 +120,19 @@ export default function TablesPage() {
     setToken(settings.token);
     void load(settings.tenantId, settings.branchId, settings.token, origin);
     const socket = settings.token ? createSocketClient(settings.token) : null;
-    ['table.status_changed', 'floor.changed', 'order.created', 'order.status_updated', 'payment.status_updated'].forEach((event) => {
+    socket?.on('table.status_changed', (payload?: { status?: string; tableId?: string }) => {
+      if (!payload?.tableId || !payload.status) {
+        return;
+      }
+      const nextStatus = payload.status;
+      const tableId = payload.tableId;
+      setTables((currentTables) =>
+        currentTables.map((table) =>
+          documentId(table) === tableId ? { ...table, status: nextStatus } : table,
+        ),
+      );
+    });
+    ['floor.changed', 'order.created', 'order.status_updated', 'payment.status_updated'].forEach((event) => {
       socket?.on(event, () => void load(settings.tenantId, settings.branchId, settings.token, origin));
     });
     socket?.connect();

@@ -28,4 +28,4 @@ Key events:
 - `menu.changed`
 - `branch.updated`
 
-The API hosts Socket.IO on the same origin as REST traffic under `/socket.io`. It consumes internal API events from Redis and broadcasts them to Socket.IO rooms. CMS, customer, waiter, and kitchen screens keep polling fallbacks between 30 and 60 seconds when socket delivery is unavailable.
+The API hosts Socket.IO on the same origin as REST traffic under `/socket.io`. API services publish events directly to the in-process Socket.IO server and broadcast them to Socket.IO rooms. CMS, customer, waiter, and kitchen screens keep polling fallbacks between 30 and 60 seconds when socket delivery is unavailable.

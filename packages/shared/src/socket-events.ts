@@ -46,6 +46,7 @@ export interface PaymentStatusPayload {
 }
 
 export interface TableStatusPayload {
+  source?: string;
   status: string;
   tableId: string;
 }

@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 
-import { getTableContext, type GuestSession, type TableContext } from '@/lib/api-client';
+import { getTableContext, joinTable, type GuestSession, type TableContext } from '@/lib/api-client';
 import { useCustomerRoute } from '@/lib/customer-route';
-import { readGuestSession } from '@/lib/customer-storage';
+import { readGuestSession, writeGuestSession } from '@/lib/customer-storage';
 
 export function CustomerLandingClient({
   initialContext,
@@ -16,6 +16,7 @@ export function CustomerLandingClient({
   const { basePath, qrToken } = useCustomerRoute();
   const [alias, setAlias] = useState('');
   const [context, setContext] = useState<TableContext | null>(initialContext);
+  const [joining, setJoining] = useState(false);
   const [message, setMessage] = useState(initialContext ? 'Choose a name for this table.' : 'Loading table...');
   const [error, setError] = useState(initialError);
 
@@ -68,6 +69,33 @@ export function CustomerLandingClient({
     };
   }, [context, qrToken, storedSession]);
 
+  async function handleJoin(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!qrToken || !basePath) {
+      setError('This customer URL is missing a QR token.');
+      return;
+    }
+
+    const trimmedAlias = alias.trim();
+    if (!trimmedAlias) {
+      setError('Enter a name for this visit.');
+      return;
+    }
+
+    setJoining(true);
+    setError('');
+    try {
+      const session = await joinTable(qrToken, trimmedAlias);
+      writeGuestSession(qrToken, session);
+      setStoredSession(session);
+      window.location.assign(`${basePath}/menu`);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Could not join this table.');
+    } finally {
+      setJoining(false);
+    }
+  }
+
   return (
     <main className="customer-main customer-main--mobile">
       <section className="customer-entry-card">
@@ -112,7 +140,7 @@ export function CustomerLandingClient({
             </a>
           </div>
         ) : (
-          <form action={`${basePath}/join`} className="customer-join-form" method="post">
+          <form className="customer-join-form" onSubmit={(event) => void handleJoin(event)}>
             <label>
               Your alias for this visit
               <input
@@ -125,8 +153,8 @@ export function CustomerLandingClient({
                 value={alias}
               />
             </label>
-            <button disabled={!context} type="submit">
-              {context ? 'Join Table' : 'Loading table'}
+            <button disabled={!context || joining} type="submit">
+              {joining ? 'Joining...' : context ? 'Join Table' : 'Loading table'}
               <span className="material-symbols-outlined">arrow_forward</span>
             </button>
           </form>

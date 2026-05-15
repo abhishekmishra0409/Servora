@@ -7,7 +7,6 @@ export const validateEnv = (env: Record<string, string | undefined>): Record<str
     'JWT_REFRESH_SECRET',
     'JWT_GUEST_SECRET',
     'MONGODB_URI',
-    'REDIS_URL',
     'WEB_URL',
   ];
   const missing = required.filter((key) => !env[key]);

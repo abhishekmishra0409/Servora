@@ -10,7 +10,6 @@ import { Payment } from '../../database/schemas/payment.schema';
 import { RestaurantTable } from '../../database/schemas/table.schema';
 import { TableSession } from '../../database/schemas/table-session.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
-import { QueueService } from '../../infrastructure/queue/queue.service';
 import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
 import { BillingService } from '../billing/billing.service';
 import { CreatePaymentCheckoutDto } from './dto';
@@ -25,7 +24,6 @@ export class PaymentsService {
     private readonly auditService: AuditService,
     private readonly billingService: BillingService,
     private readonly configService: ConfigService,
-    private readonly queueService: QueueService,
     private readonly realtimePublisher: RealtimePublisher,
   ) { }
 
@@ -89,17 +87,6 @@ export class PaymentsService {
       payload: { orderIds, tableSessionId },
       tenantId: firstOrder.tenantId,
     });
-    await this.queueService.enqueueNotificationJob(
-      'notifications.bill_requested',
-      {
-        branchId: firstOrder.branchId,
-        orderIds,
-        paymentId: String(payment._id),
-        tableSessionId,
-        tenantId: firstOrder.tenantId,
-      },
-      { jobId: `bill-requested:${tableSessionId}` },
-    );
     await this.publishPaymentRequested(payment, orderIds);
 
     return payment;
@@ -326,16 +313,6 @@ export class PaymentsService {
         payload: { method, orderIds },
         tenantId: payment.tenantId,
       });
-      await this.queueService.enqueueNotificationJob(
-        'notifications.payment_captured',
-        {
-          branchId: payment.branchId,
-          orderIds,
-          paymentId: String(payment._id),
-          tenantId: payment.tenantId,
-        },
-        { jobId: `payment-captured:${String(payment._id)}` },
-      );
       await Promise.all([
         ...orders.map((order) =>
           this.realtimePublisher.publishRealtimeEvent(`branch:${payment.branchId}`, 'order.status_updated', {

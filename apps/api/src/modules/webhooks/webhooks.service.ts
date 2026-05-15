@@ -8,7 +8,6 @@ import { Order } from '../../database/schemas/order.schema';
 import { Payment } from '../../database/schemas/payment.schema';
 import { TableSession } from '../../database/schemas/table-session.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
-import { QueueService } from '../../infrastructure/queue/queue.service';
 import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
 import { BillingService } from '../billing/billing.service';
 
@@ -25,7 +24,6 @@ export class WebhooksService {
     private readonly tableSessionModel: Model<TableSession>,
     private readonly billingService: BillingService,
     private readonly auditService: AuditService,
-    private readonly queueService: QueueService,
     private readonly realtimePublisher: RealtimePublisher,
   ) {}
 
@@ -58,11 +56,6 @@ export class WebhooksService {
       tenantId: `provider:${provider}`,
     });
 
-    await this.queueService.enqueueBillingJob(
-      'billing.reconcile_subscription',
-      { payload, provider },
-      { jobId: `billing-reconcile:${provider}:${eventId}` },
-    );
     await this.billingService.upsertSubscriptionFromWebhook(provider, payload);
     await this.applyPaymentWebhook(payload);
     await this.auditService.record({

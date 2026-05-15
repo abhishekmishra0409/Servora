@@ -7,8 +7,6 @@ import { validateEnv } from './config/validate-env';
 import { DatabaseModule } from './database/mongoose.module';
 import { AccessModule } from './infrastructure/access/access.module';
 import { AuditModule } from './infrastructure/audit/audit.module';
-import { QueueModule } from './infrastructure/queue/queue.module';
-import { EmbeddedWorkerModule } from './infrastructure/workers/embedded-worker.module';
 import { RealtimeGatewayModule } from './infrastructure/realtime/realtime-gateway.module';
 import { RealtimePublisherModule } from './infrastructure/realtime/realtime-publisher.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
@@ -42,8 +40,6 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     DatabaseModule,
     AccessModule,
     AuditModule,
-    QueueModule,
-    EmbeddedWorkerModule,
     RealtimePublisherModule,
     RealtimeGatewayModule,
     HealthModule,

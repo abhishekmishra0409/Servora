@@ -17,7 +17,6 @@ import { TableSession } from '../../database/schemas/table-session.schema';
 import { RestaurantTable } from '../../database/schemas/table.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
 import { AccessService } from '../../infrastructure/access/access.service';
-import { QueueService } from '../../infrastructure/queue/queue.service';
 import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
 import {
   AddBucketItemDto,
@@ -42,7 +41,6 @@ export class SessionsService {
     private readonly configService: ConfigService,
     private readonly auditService: AuditService,
     private readonly accessService: AccessService,
-    private readonly queueService: QueueService,
     private readonly realtimePublisher: RealtimePublisher,
   ) {}
 
@@ -101,18 +99,11 @@ export class SessionsService {
       joinedAt: new Date(),
     });
     await session.save();
-    await Promise.all([
-      this.realtimePublisher.publishRealtimeEvent(`tableSession:${String(session._id)}`, SOCKET_EVENTS.participantJoined, {
-        alias: dto.alias,
-        participantId,
-        tableSessionId: String(session._id),
-      }),
-      this.realtimePublisher.publishRealtimeEvent(`branch:${session.branchId}`, SOCKET_EVENTS.participantJoined, {
-        alias: dto.alias,
-        participantId,
-        tableSessionId: String(session._id),
-      }),
-    ]);
+    await this.realtimePublisher.publishRealtimeEvent(`tableSession:${String(session._id)}`, SOCKET_EVENTS.participantJoined, {
+      alias: dto.alias,
+      participantId,
+      tableSessionId: String(session._id),
+    });
 
     const payload: GuestJwtPayload = {
       alias: dto.alias,
@@ -288,6 +279,7 @@ export class SessionsService {
     }
 
     await this.realtimePublisher.publishRealtimeEvent(`branch:${qrCode.branchId}`, 'table.status_changed', {
+      source: 'table_session_join',
       status: TableStatus.Occupied,
       tableId: String(table._id),
     });
@@ -367,22 +359,6 @@ export class SessionsService {
     await tableSession.save(mongoSession ? { session: mongoSession } : undefined);
 
     await Promise.all([
-      this.queueService.enqueueNotificationJob(
-        'notifications.order_created',
-        {
-          branchId: createdOrder.branchId,
-          orderId: String(createdOrder._id),
-          status: createdOrder.status,
-          tableSessionId: String(tableSession._id),
-          tenantId: createdOrder.tenantId,
-        },
-        { jobId: `order-created:${String(createdOrder._id)}` },
-      ),
-      this.queueService.enqueueAnalyticsJob(
-        'analytics.refresh_branch_rollup',
-        { branchId: createdOrder.branchId, tenantId: createdOrder.tenantId },
-        { jobId: `analytics-refresh:${createdOrder.branchId}:${Date.now()}` },
-      ),
       this.realtimePublisher.publishRealtimeEvent(`branch:${createdOrder.branchId}`, SOCKET_EVENTS.orderCreated, {
         orderId: String(createdOrder._id),
         status: createdOrder.status,

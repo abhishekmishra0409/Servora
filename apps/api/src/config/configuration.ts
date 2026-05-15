@@ -44,9 +44,6 @@ export default () => ({
     dbName: process.env.MONGODB_DB_NAME ?? 'restaurent_saas',
     uri: process.env.MONGODB_URI ?? 'mongodb://localhost:27017',
   },
-  redis: {
-    url: process.env.REDIS_URL ?? 'redis://localhost:6379',
-  },
   throttling: {
     max: parseNumber(process.env.RATE_LIMIT_MAX, 200),
     ttl: parseNumber(process.env.RATE_LIMIT_TTL, 60),

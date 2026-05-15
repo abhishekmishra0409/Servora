@@ -1,8 +1,6 @@
 import type { MenuCategory, MenuItem } from '@restaurent/shared';
-import { cookies } from 'next/headers';
 
-import type { GuestSession, TableContext } from '@/lib/api-client';
-import { guestSessionCookieName } from '@/lib/customer-storage';
+import type { TableContext } from '@/lib/api-client';
 
 import { CustomerMenuClient } from './customer-menu-client';
 
@@ -71,36 +69,20 @@ async function loadInitialMenu(qrToken: string): Promise<InitialMenu> {
   }
 }
 
-async function readInitialGuest(qrToken: string): Promise<GuestSession | null> {
-  const raw = (await cookies()).get(guestSessionCookieName(qrToken))?.value;
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(decodeURIComponent(raw)) as GuestSession;
-  } catch {
-    return null;
-  }
-}
-
 export default async function CustomerMenuPage({
   params,
 }: {
   params: Promise<{ branchSlug: string; qrToken: string; tenantSlug: string }>;
 }) {
   const resolvedParams = await params;
-  const [initialMenu, initialGuest] = await Promise.all([
-    loadInitialMenu(resolvedParams.qrToken),
-    readInitialGuest(resolvedParams.qrToken),
-  ]);
+  const initialMenu = await loadInitialMenu(resolvedParams.qrToken);
 
   return (
     <CustomerMenuClient
       initialCategories={initialMenu.categories}
       initialContext={initialMenu.context}
       initialError={initialMenu.error}
-      initialGuest={initialGuest}
+      initialGuest={null}
       initialItems={initialMenu.items}
     />
   );

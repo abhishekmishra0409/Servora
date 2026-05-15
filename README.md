@@ -4,9 +4,8 @@ This monorepo is a runnable starter for a multi-tenant restaurant operating syst
 
 ## Architecture Summary
 
-- `apps/api`: active NestJS backend with REST APIs, MongoDB/Mongoose, JWT auth, webhooks, Socket.IO gateways, and embedded BullMQ workers.
+- `apps/api`: active NestJS backend with REST APIs, MongoDB/Mongoose, JWT auth, webhooks, and Socket.IO gateways.
 - `apps/web`: active Next.js frontend with CMS, waiter, kitchen, bills, role-based staff workspace, and customer QR/PWA surfaces.
-- `apps/realtime`, `apps/worker`, `apps/waiter`, and `apps/kitchen`: archived reference apps kept in GitHub only; root scripts and deployments do not use them.
 - `packages/shared`: shared domain types, permissions, event names, and API contracts.
 
 ## Repo Structure
@@ -15,10 +14,6 @@ This monorepo is a runnable starter for a multi-tenant restaurant operating syst
 apps/
   api/
   web/
-  realtime/   # archived reference
-  worker/     # archived reference
-  waiter/     # archived reference
-  kitchen/    # archived reference
 packages/
   shared/
 docs/
@@ -30,7 +25,6 @@ scripts/
 - Node.js 22+
 - npm 11+
 - MongoDB 8+ or Docker Desktop
-- Redis 7+ or Docker Desktop
 
 ## Environment Setup
 
@@ -144,12 +138,12 @@ Set the Cloudinary environment values in `.env` before using menu media upload s
 - `apps/api/Dockerfile` and `apps/web/Dockerfile` can be deployed independently.
 - For separate hosting, set `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_REALTIME_URL` in the web app to the hosted API origin.
 - Set backend `CORS_ORIGINS` and `WEB_URL` to the hosted web origin.
-- Managed MongoDB and Redis are the expected production defaults.
+- Managed MongoDB is the expected production default.
 - Keep billing webhooks source-of-truth driven and idempotent in every environment.
 
 ## Verification Checklist
 
-- MongoDB and Redis reachable from the API app.
+- MongoDB reachable from the API app.
 - Seed data creates a tenant, branch, users, menu, tables, and QR codes.
 - Customer table join and bucket submit produce an order once per idempotency key.
 - Waiter-confirmed branches keep new orders pending until confirmation.

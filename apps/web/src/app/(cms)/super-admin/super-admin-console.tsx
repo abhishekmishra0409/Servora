@@ -52,7 +52,7 @@ const viewMeta: Record<SuperAdminView, { description: string; title: string }> =
     title: 'Manage subscription',
   },
   'system-health': {
-    description: 'Monitor API, database, realtime, queue, and edge service health.',
+    description: 'Monitor API, database, realtime, and edge service health.',
     title: 'System health monitoring',
   },
   tenants: {
@@ -90,12 +90,9 @@ const displayDate = (value?: string): string => (value ? new Date(value).toLocal
 export function SuperAdminConsole({ view }: { view: SuperAdminView }) {
   const [busy, setBusy] = useState(false);
   const [createForm, setCreateForm] = useState(blankTenantForm);
-  const [detail, setDetail] = useState<CmsSuperAdminTenantDetail | null>(null);
-  const [enabledFeatures, setEnabledFeatures] = useState<string[]>(DEFAULT_TENANT_FEATURES);
   const [message, setMessage] = useState('Loading platform data...');
   const [plans, setPlans] = useState<CmsSubscriptionPlan[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState('');
-  const [tenantForm, setTenantForm] = useState(blankTenantForm);
   const [tenants, setTenants] = useState<CmsSuperAdminTenantSummary[]>([]);
   const [token, setToken] = useState('');
 
@@ -108,21 +105,6 @@ export function SuperAdminConsole({ view }: { view: SuperAdminView }) {
     }
     void load(settings.token);
   }, []);
-
-  useEffect(() => {
-    if (!detail) return;
-    setTenantForm({
-      defaultCurrency: detail.tenant.defaultCurrency,
-      defaultTimezone: detail.tenant.defaultTimezone,
-      legalName: detail.tenant.legalName,
-      ownerEmail: '',
-      ownerName: '',
-      ownerPassword: '',
-      slug: detail.tenant.slug,
-      status: detail.tenant.status,
-    });
-    setEnabledFeatures(detail.tenant.enabledFeatures?.length ? detail.tenant.enabledFeatures : DEFAULT_TENANT_FEATURES);
-  }, [detail]);
 
   const stats = useMemo(() => {
     const activeTenants = tenants.filter((item) => item.tenant.status === 'active').length;
@@ -176,7 +158,6 @@ export function SuperAdminConsole({ view }: { view: SuperAdminView }) {
       setPlans(nextPlans);
       const fallbackTenantId = nextTenantId || documentId(nextTenants[0]?.tenant ?? {});
       setSelectedTenantId(fallbackTenantId);
-      setDetail(fallbackTenantId ? await getSuperAdminTenant(fallbackTenantId, nextToken) : null);
       setMessage(nextTenants.length ? '' : 'No tenants exist yet.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not load platform tenants.');
@@ -185,28 +166,8 @@ export function SuperAdminConsole({ view }: { view: SuperAdminView }) {
     }
   }
 
-  async function selectTenant(id: string): Promise<void> {
+  function selectTenant(id: string): void {
     setSelectedTenantId(id);
-    setBusy(true);
-    try {
-      setDetail(await getSuperAdminTenant(id, token));
-      setMessage('');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not load tenant detail.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function replaceTenant(nextDetail: CmsSuperAdminTenantDetail): void {
-    setDetail(nextDetail);
-    setTenants((current) =>
-      current.map((item) =>
-        documentId(item.tenant) === documentId(nextDetail.tenant)
-          ? { plan: nextDetail.plan, subscription: nextDetail.subscription, tenant: nextDetail.tenant }
-          : item,
-      ),
-    );
   }
 
   async function createTenant(): Promise<void> {
@@ -257,32 +218,6 @@ export function SuperAdminConsole({ view }: { view: SuperAdminView }) {
     }
   }
 
-  async function saveTenantDetails(): Promise<void> {
-    if (!detail) return;
-    setBusy(true);
-    try {
-      replaceTenant(await updateSuperAdminTenant(documentId(detail.tenant), tenantForm, token));
-      setMessage('Tenant updated.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not update tenant.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveFeaturePermissions(): Promise<void> {
-    if (!detail) return;
-    setBusy(true);
-    try {
-      replaceTenant(await updateSuperAdminTenantFeatures(documentId(detail.tenant), enabledFeatures, token));
-      setMessage('Tenant permissions updated.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not update tenant permissions.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function updatePlanLocal(code: string, patch: Partial<CmsSubscriptionPlan>): void {
     setPlans((current) => current.map((plan) => (plan.code === code ? { ...plan, ...patch } : plan)));
   }
@@ -312,12 +247,6 @@ export function SuperAdminConsole({ view }: { view: SuperAdminView }) {
     } finally {
       setBusy(false);
     }
-  }
-
-  function toggleFeature(feature: string): void {
-    setEnabledFeatures((current) =>
-      current.includes(feature) ? current.filter((item) => item !== feature) : [...current, feature],
-    );
   }
 
   const meta = viewMeta[view];
@@ -422,7 +351,7 @@ export function SuperAdminConsole({ view }: { view: SuperAdminView }) {
             ]}
           />
           <section className="cms-dashboard-grid">
-            <TenantList busy={busy} selectedTenantId={selectedTenantId} selectTenant={selectTenant} tenants={tenants} />
+            <TenantList busy={busy} selectedTenantId={selectedTenantId} tenants={tenants} />
             <CreateTenantForm busy={busy} createForm={createForm} createTenant={createTenant} setCreateForm={setCreateForm} token={token} />
           </section>
         </>
@@ -768,7 +697,7 @@ function HealthPanel({ stats }: { stats: { activePlans: number; activeSubscripti
   );
 }
 
-function SubscriptionTable({ selectTenant, tenants }: { selectTenant: (id: string) => Promise<void>; tenants: CmsSuperAdminTenantSummary[] }) {
+function SubscriptionTable({ selectTenant, tenants }: { selectTenant: (id: string) => void; tenants: CmsSuperAdminTenantSummary[] }) {
   return (
     <section className="panel">
       <div className="cms-section-head"><h2>Tenant subscriptions</h2></div>
@@ -779,7 +708,7 @@ function SubscriptionTable({ selectTenant, tenants }: { selectTenant: (id: strin
             <span>{item.plan?.name ?? 'No plan'}</span>
             <span>{item.subscription?.status ? label(item.subscription.status) : 'not started'}</span>
             <span>{item.plan ? money(item.plan.monthlyPrice) : money(0)}</span>
-            <button className="button-secondary" onClick={() => void selectTenant(documentId(item.tenant))} type="button">Select</button>
+            <button className="button-secondary" onClick={() => selectTenant(documentId(item.tenant))} type="button">Select</button>
           </div>
         ))}
       </div>
@@ -787,7 +716,7 @@ function SubscriptionTable({ selectTenant, tenants }: { selectTenant: (id: strin
   );
 }
 
-function TenantList({ busy, selectedTenantId, tenants }: { busy: boolean; selectedTenantId: string; selectTenant: (id: string) => Promise<void>; tenants: CmsSuperAdminTenantSummary[] }) {
+function TenantList({ busy, selectedTenantId, tenants }: { busy: boolean; selectedTenantId: string; tenants: CmsSuperAdminTenantSummary[] }) {
   return (
     <article className="panel">
       <h2>Tenants</h2>
@@ -833,33 +762,6 @@ function CreateTenantForm({ busy, createForm, createTenant, setCreateForm, token
         <label><span>Owner password</span><input autoComplete="new-password" onChange={(event) => setCreateForm({ ...createForm, ownerPassword: event.target.value })} placeholder="At least 8 characters" type="password" value={createForm.ownerPassword} /></label>
         <button disabled={busy || !token} onClick={() => void createTenant()} type="button">Create tenant</button>
       </div>
-    </article>
-  );
-}
-
-function TenantDetailsForm({ busy, detail, saveTenantDetails, setTenantForm, tenantForm }: { busy: boolean; detail: CmsSuperAdminTenantDetail | null; saveTenantDetails: () => Promise<void>; setTenantForm: (value: typeof blankTenantForm) => void; tenantForm: typeof blankTenantForm }) {
-  return (
-    <article className="panel">
-      <h2>Tenant details</h2>
-      {detail ? (
-        <div className="cms-form-grid">
-          <label><span>Name</span><input onChange={(event) => setTenantForm({ ...tenantForm, legalName: event.target.value })} value={tenantForm.legalName} /></label>
-          <label><span>Slug</span><input onChange={(event) => setTenantForm({ ...tenantForm, slug: event.target.value })} value={tenantForm.slug} /></label>
-          <label>
-            <span>Status</span>
-            <select onChange={(event) => setTenantForm({ ...tenantForm, status: event.target.value })} value={tenantForm.status}>
-              {tenantStatuses.map((status) => <option key={status} value={status}>{label(status)}</option>)}
-            </select>
-          </label>
-          <div className="cms-form-grid cms-form-grid--two">
-            <label><span>Currency</span><input onChange={(event) => setTenantForm({ ...tenantForm, defaultCurrency: event.target.value })} value={tenantForm.defaultCurrency} /></label>
-            <label><span>Timezone</span><input onChange={(event) => setTenantForm({ ...tenantForm, defaultTimezone: event.target.value })} value={tenantForm.defaultTimezone} /></label>
-          </div>
-          <button disabled={busy} onClick={() => void saveTenantDetails()} type="button">Save tenant</button>
-        </div>
-      ) : (
-        <p className="muted">Select a tenant to edit platform-level settings.</p>
-      )}
     </article>
   );
 }
@@ -911,7 +813,7 @@ function SystemHealthView({ recentEvents, stats }: { recentEvents: { icon: strin
   );
 }
 
-function BillingView({ selectTenant, stats, tenants }: { selectTenant: (id: string) => Promise<void>; stats: { activeSubscriptions: number; attention: number; monthlyValue: number }; tenants: CmsSuperAdminTenantSummary[] }) {
+function BillingView({ selectTenant, stats, tenants }: { selectTenant: (id: string) => void; stats: { activeSubscriptions: number; attention: number; monthlyValue: number }; tenants: CmsSuperAdminTenantSummary[] }) {
   return (
     <>
       <MetricGrid metrics={[['Current MRR', money(stats.monthlyValue)], ['Active subscriptions', String(stats.activeSubscriptions)], ['Past due or suspended', String(stats.attention)], ['Billing currency', 'INR']]} />

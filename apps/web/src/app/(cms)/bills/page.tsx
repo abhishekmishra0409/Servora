@@ -61,7 +61,6 @@ export default function BillsPage() {
     socket?.on('order.status_updated', () => void load());
     socket?.on('payment.bill_requested', () => void load());
     socket?.on('payment.status_updated', () => void load());
-    socket?.on('table.status_changed', () => void load());
     socket?.on('service_request.created', () => void load());
     socket?.connect();
     const interval = window.setInterval(() => void load(), 30000);

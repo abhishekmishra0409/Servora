@@ -9,7 +9,7 @@ import {
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 
-import { RealtimeBusService } from '../realtime-bus.service';
+import { RealtimePublisher } from '../realtime-publisher.service';
 import { SocketAuthService } from '../socket-auth.service';
 
 @WebSocketGateway({
@@ -23,11 +23,11 @@ export class TableSessionGateway implements OnGatewayConnection, OnGatewayInit {
 
   constructor(
     private readonly socketAuthService: SocketAuthService,
-    private readonly realtimeBus: RealtimeBusService,
+    private readonly realtimePublisher: RealtimePublisher,
   ) {}
 
   afterInit(server: Server): void {
-    this.realtimeBus.bindServer(server);
+    this.realtimePublisher.bindServer(server);
   }
 
   handleConnection(client: Socket): void {
@@ -42,14 +42,15 @@ export class TableSessionGateway implements OnGatewayConnection, OnGatewayInit {
       return;
     }
 
+    if ('tableSessionId' in user) {
+      void client.join(`tableSession:${user.tableSessionId}`);
+      return;
+    }
+
     const branchId = user.branchId;
 
     if (branchId) {
       void client.join(`branch:${branchId}`);
-    }
-
-    if ('tableSessionId' in user) {
-      void client.join(`tableSession:${user.tableSessionId}`);
     }
 
     void client.join(`tenant:${user.tenantId}`);

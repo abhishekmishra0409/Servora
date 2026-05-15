@@ -8,7 +8,6 @@ const apiUrl = process.env.API_URL || 'http://localhost:4000';
 const runtimeEnv = {
   ...process.env,
   API_URL: apiUrl,
-  EMBEDDED_WORKERS: process.env.EMBEDDED_WORKERS || 'true',
   NEXT_PUBLIC_REALTIME_URL: process.env.NEXT_PUBLIC_REALTIME_URL || process.env.NEXT_PUBLIC_API_URL || apiUrl,
   REALTIME_URL: process.env.REALTIME_URL || apiUrl,
 };

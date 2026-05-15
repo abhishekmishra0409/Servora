@@ -2,14 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 
-import { QueueService } from '../../infrastructure/queue/queue.service';
-
 @Injectable()
 export class HealthService {
-  constructor(
-    @InjectConnection() private readonly connection: Connection,
-    private readonly queueService: QueueService,
-  ) {}
+  constructor(@InjectConnection() private readonly connection: Connection) {}
 
   getHealth(): { status: string; timestamp: string } {
     return {
@@ -20,11 +15,10 @@ export class HealthService {
 
   async getReady(): Promise<{ checks: Record<string, boolean>; ready: boolean }> {
     const mongo = this.connection.readyState === 1;
-    const redis = await this.queueService.ping().catch(() => false);
 
     return {
-      checks: { mongo, redis },
-      ready: mongo && redis,
+      checks: { mongo },
+      ready: mongo,
     };
   }
 }

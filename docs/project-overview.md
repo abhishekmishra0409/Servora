@@ -14,7 +14,7 @@ In simple terms:
 - Owners and managers use the CMS to view branch activity, live orders, and menu items.
 - The backend keeps the restaurant data consistent, secure, and branch-aware.
 
-The project is built as a monorepo with two active apps plus shared domain code. `apps/api` runs REST APIs, Socket.IO realtime, and embedded BullMQ workers. `apps/web` runs the unified Next.js frontend for the CMS, waiter, kitchen, billing, and customer QR/PWA routes. The old `apps/realtime`, `apps/worker`, `apps/waiter`, and `apps/kitchen` folders remain only as archived reference code.
+The project is built as a monorepo with two active apps plus shared domain code. `apps/api` runs REST APIs and in-process Socket.IO realtime. `apps/web` runs the unified Next.js frontend for the CMS, waiter, kitchen, billing, and customer QR/PWA routes.
 
 ## 2. Who Uses The System
 
@@ -92,10 +92,9 @@ flowchart TD
 | App / Package | Technology | Responsibility |
 | --- | --- | --- |
 | `apps/web` | Next.js | Unified frontend for CMS, waiter, kitchen, billing, and customer QR/PWA flow |
-| `apps/api` | NestJS | Auth, menu, tables, QR, sessions, buckets, orders, service requests, billing, webhooks, Socket.IO, and embedded workers |
+| `apps/api` | NestJS | Auth, menu, tables, QR, sessions, buckets, orders, service requests, billing, webhooks, and Socket.IO |
 | `packages/shared` | TypeScript | Shared enums, API contracts, route constants, permissions, event names |
 | `scripts` | TypeScript/shell | Seed, admin creation, migrations, local verification |
-| `apps/realtime`, `apps/worker`, `apps/waiter`, `apps/kitchen` | Mixed | Archived reference code only; not active build, script, or deploy targets |
 
 ## 5. Technical Architecture
 
@@ -105,17 +104,12 @@ flowchart LR
   Staff[Staff Workspace] --> Web
   Web --> API[NestJS API]
   API --> Mongo[(MongoDB)]
-  API --> Redis[(Redis)]
   API --> SocketIO[Socket.IO Gateway]
-  API --> Workers[Embedded BullMQ Workers]
-  SocketIO --> Redis
-  Workers --> Redis
-  Workers --> Mongo
   API --> Stripe[Stripe]
   API --> Cloudinary[Cloudinary]
 ```
 
-The API is the source of truth for transactional operations. Socket.IO runs on the API origin under `/socket.io`, and embedded workers process slower or retried jobs such as notifications, cleanup, billing reconciliation, analytics, and media cleanup when `EMBEDDED_WORKERS=true`.
+The API is the source of truth for transactional operations. Socket.IO runs on the API origin under `/socket.io`, and API services publish live events directly to the in-process Socket.IO gateway.
 
 ## 6. Main Backend Domains
 
@@ -340,4 +334,4 @@ For technical audiences:
 
 ## 14. One-Minute Pitch
 
-Restaurent is a restaurant operations platform that connects the customer table, waiter floor, kitchen station, and owner dashboard. Customers scan a QR code and order from their table. Waiters confirm orders and handle service requests. Kitchen staff process live tickets. Owners see branch activity and manage menu data. The system is multi-tenant, branch-aware, and built with a NestJS API, MongoDB, Redis-backed realtime and queue infrastructure, and one unified Next.js frontend.
+Restaurent is a restaurant operations platform that connects the customer table, waiter floor, kitchen station, and owner dashboard. Customers scan a QR code and order from their table. Waiters confirm orders and handle service requests. Kitchen staff process live tickets. Owners see branch activity and manage menu data. The system is multi-tenant, branch-aware, and built with a NestJS API, MongoDB, in-process Socket.IO realtime, and one unified Next.js frontend.
