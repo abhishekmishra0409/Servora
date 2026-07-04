@@ -208,35 +208,23 @@ For owner, waiter, kitchen, manager, and cashier login, Branch ID can be left bl
 | Kitchen board | `http://localhost:3000/kitchen-board` |
 | Bills | `http://localhost:3000/bills` |
 
-### Running On Your Wi-Fi / Router
+### Real Devices & Production
 
-For demos on real devices, replace `localhost` with your computer's local network IP address.
+The app is same-origin: the browser calls relative `/api/v1` and `/socket.io`,
+which the Next.js server proxies to the API. Nothing about the host/IP is baked
+into the web bundle, so no per-machine URL configuration is needed and an IP/DNS
+change never breaks the app.
 
-Example:
+- For local dev, use `http://localhost:3000` on the machine running the project.
+- For demos on other devices or production, deploy behind a real domain (or a
+  reverse proxy) and open that domain. For split-domain hosting, set
+  `NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_REALTIME_URL` to the API origin and rebuild
+  the web app.
+- Generate table QR codes from the deployed domain so the encoded customer URL is
+  reachable by diners' phones.
 
-| Service | LAN URL example |
-| --- | --- |
-| Web / CMS / Customer PWA | `http://192.168.1.45:3000` |
-| Customer QR demo | `http://192.168.1.45:3000/r/harbor-grill/downtown/t/qr-t1` |
-| Staff dashboard | `http://192.168.1.45:3000/dashboard` |
-| Kitchen board | `http://192.168.1.45:3000/kitchen-board` |
-| API health | `http://192.168.1.45:4000/api/v1/health` |
-
-How to find the IP on Windows:
-
-```powershell
-Get-NetIPAddress -AddressFamily IPv4 |
-  Where-Object { $_.IPAddress -like "192.168.*" -or $_.IPAddress -like "10.*" } |
-  Select-Object IPAddress
-```
-
-Router demo rules:
-
-- The computer running the project and the phone/tablet must be on the same Wi-Fi/router.
-- Use the computer IP, not `localhost`, on external devices.
-- The frontend rewrites local API and realtime URLs to the LAN hostname when opened from the router IP.
-- The API allows private-network development origins.
-- Windows Firewall may need to allow Node.js on ports `3000` and `4000`.
+> The earlier LAN/router-IP workflow (hardcoding `192.168.x` into the bundle) has
+> been removed — it broke the app on every DHCP change.
 
 Common commands:
 

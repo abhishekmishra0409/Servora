@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Param, Patch, Post, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { GuestJwtPayload } from '@restaurent/shared';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -17,11 +18,16 @@ import { SessionsService } from './sessions.service';
 export class SessionsController {
   constructor(private readonly sessionsService: SessionsService) {}
 
+  // Unauthenticated QR entry points — throttle to limit token/enumeration abuse.
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('guest-sessions')
   createGuestSession(@Body() dto: CreateGuestSessionDto): Promise<unknown> {
     return this.sessionsService.createGuestSession(dto);
   }
 
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('table-sessions/join')
   joinTableSession(@Body() dto: JoinTableSessionDto): Promise<unknown> {
     return this.sessionsService.joinTableSession(dto);

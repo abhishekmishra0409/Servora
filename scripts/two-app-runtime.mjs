@@ -5,10 +5,13 @@ const mode = process.argv[2] ?? 'dev';
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const useShell = process.platform === 'win32';
 const apiUrl = process.env.API_URL || 'http://localhost:4000';
+// Only derive the SERVER-SIDE proxy targets here. Do NOT set NEXT_PUBLIC_* — the
+// web build inlines those, and forcing a host into them is exactly what made the
+// app break on every IP change. The browser talks to the API through the
+// same-origin Next proxy; NEXT_PUBLIC_* stay whatever .env explicitly sets.
 const runtimeEnv = {
   ...process.env,
   API_URL: apiUrl,
-  NEXT_PUBLIC_REALTIME_URL: process.env.NEXT_PUBLIC_REALTIME_URL || process.env.NEXT_PUBLIC_API_URL || apiUrl,
   REALTIME_URL: process.env.REALTIME_URL || apiUrl,
 };
 

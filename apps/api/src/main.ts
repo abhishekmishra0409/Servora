@@ -4,11 +4,12 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module';
-import { configureApp } from './bootstrap';
+import { configureApp, resolveLogLevels } from './bootstrap';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
+    logger: resolveLogLevels(),
   });
   const configService = app.get(ConfigService);
   const port = configService.get<number>('api.port', 4000);

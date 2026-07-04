@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { getLiveOrders, getOrderById, type LiveOrder } from '../../../lib/api-client';
-import { readCmsSettings, writeCmsSettings } from '../../../lib/cms-storage';
+import { readCmsSettings } from '../../../lib/cms-storage';
 import { formatOrderNumber } from '../../../lib/order-number';
 import { createSocketClient } from '../../../lib/socket';
 
@@ -63,7 +63,6 @@ export default function DashboardPage() {
       setMessage('Sign in to load dashboard data from the database.');
       return;
     }
-    writeCmsSettings(nextBranchId, nextToken);
     try {
       const nextOrders = await getLiveOrders(nextBranchId, nextToken);
       setOrders(nextOrders);
@@ -116,11 +115,6 @@ export default function DashboardPage() {
             </span>
             Refresh
           </button>
-        </section>
-
-        <section className="toolbar compact-toolbar">
-          <input onChange={(event) => setBranchId(event.target.value)} placeholder="Branch ID" value={branchId} />
-          <input onChange={(event) => setToken(event.target.value)} placeholder="Staff access token" value={token} />
         </section>
 
         {message ? (

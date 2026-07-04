@@ -52,47 +52,39 @@ npm run start:api
 npm run start:web
 ```
 
-## Local Dev On Your Wi-Fi / Router
+## Local Dev
 
-You can open the project from another device on the same router, such as a phone, tablet, waiter device, or kitchen display.
-
-1. Start the project on your computer:
+Run everything on your machine over `localhost`:
 
 ```bash
 npm run dev
 ```
 
-2. Find your computer's local network IP.
-
-On Windows PowerShell:
-
-```powershell
-Get-NetIPAddress -AddressFamily IPv4 |
-  Where-Object { $_.IPAddress -like "192.168.*" -or $_.IPAddress -like "10.*" } |
-  Select-Object IPAddress
-```
-
-Example IP: `192.168.1.45`
-
-3. Open these URLs from another device on the same Wi-Fi:
-
 ```text
-Web / Staff / Customer: http://192.168.1.45:3000
-Customer QR demo:     http://192.168.1.45:3000/r/harbor-grill/downtown/t/qr-t1
-Kitchen board:        http://192.168.1.45:3000/kitchen-board
-Bills:                http://192.168.1.45:3000/bills
-API health:           http://192.168.1.45:4000/api/v1/health
-Realtime gateway:     http://192.168.1.45:4000
+Web / Staff / Customer: http://localhost:3000
+Customer QR demo:       http://localhost:3000/r/harbor-grill/downtown/t/qr-t1
+Kitchen board:          http://localhost:3000/kitchen-board
+API health:             http://localhost:4000/api/v1/health
 ```
 
-Replace `192.168.1.45` with your computer's actual IP.
+The app is **same-origin**: the browser calls relative `/api/v1` and `/socket.io`,
+and the Next.js server proxies those to the API. There is **no IP to configure** —
+nothing about the host is baked into the web bundle, so this works unchanged
+whether you open it on `localhost` or on a real domain in production. (An earlier
+version hardcoded a LAN/router IP into the bundle, which broke the app on every
+DHCP change; that mechanism has been removed.)
 
-Notes:
+## Deploying to a Domain
 
-- Do not use `localhost` from a phone or tablet. On that device, `localhost` means the phone/tablet itself.
-- The frontend automatically rewrites local API/realtime URLs to the current LAN hostname when opened through your router IP.
-- In development, the API allows localhost and private-network origins such as `192.168.x.x`, `10.x.x.x`, and `172.16.x.x` to `172.31.x.x`.
-- If the page does not load from another device, allow Node.js through Windows Firewall for ports `3000` and `4000`.
+Production is domain-based. For **same-origin** hosting (web and API behind one
+domain, e.g. via a reverse proxy), just set `WEB_URL` and `CORS_ORIGINS` to that
+domain and leave the `NEXT_PUBLIC_*` vars blank. For **split-domain** hosting
+(API on its own host, e.g. `https://api.example.com`), additionally set
+`NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_REALTIME_URL` to the API origin — these are
+inlined at `next build` time, so rebuild the web app after changing them.
+
+When printing table QR codes, open the CMS from the deployed domain (not
+`localhost`) so the encoded customer URL is reachable by diners' phones.
 
 ## Local Dev With Docker Compose
 
@@ -136,10 +128,18 @@ Set the Cloudinary environment values in `.env` before using menu media upload s
 ## Deploy Notes
 
 - `apps/api/Dockerfile` and `apps/web/Dockerfile` can be deployed independently.
-- For separate hosting, set `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_REALTIME_URL` in the web app to the hosted API origin.
+- Same-origin hosting: leave `NEXT_PUBLIC_*` blank and let the Next proxy reach the API. Split-domain hosting: set `NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_REALTIME_URL` to the API origin (rebuild the web app after changing them).
 - Set backend `CORS_ORIGINS` and `WEB_URL` to the hosted web origin.
-- Managed MongoDB is the expected production default.
-- Keep billing webhooks source-of-truth driven and idempotent in every environment.
+- Managed MongoDB is the expected production default. In production, indexes are not built on boot — run `npm run sync-indexes` after deploy.
+- Set strong, distinct `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` / `JWT_GUEST_SECRET` (the API refuses to boot with placeholder values). Generate with `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`.
+- Keep billing webhooks source-of-truth driven and idempotent in every environment; `STRIPE_WEBHOOK_SECRET` is required whenever Stripe is configured (signatures are verified in all environments).
+
+## Secrets
+
+`.env` is gitignored and must never be committed. Do not keep shared or live
+production secrets in a developer's `.env`. Rotate any credential that has been
+shared or committed (MongoDB, Stripe, Cloudinary, Redis, JWT secrets), and use a
+secrets manager for production rather than a plaintext file.
 
 ## Verification Checklist
 

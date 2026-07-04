@@ -10,7 +10,7 @@ import {
   updateOrderStatus,
   type LiveOrder,
 } from '../../../lib/api-client';
-import { readCmsSettings, writeCmsSettings } from '../../../lib/cms-storage';
+import { readCmsSettings } from '../../../lib/cms-storage';
 import { formatOrderNumber } from '../../../lib/order-number';
 import { createSocketClient } from '../../../lib/socket';
 
@@ -59,7 +59,6 @@ export default function OrdersPage() {
       setMessage('Sign in to load live orders from the database.');
       return;
     }
-    writeCmsSettings(nextBranchId, nextToken);
     try {
       const nextOrders = await getLiveOrders(nextBranchId, nextToken);
       setOrders(nextOrders);
@@ -108,11 +107,6 @@ export default function OrdersPage() {
             </span>
             Refresh
           </button>
-        </section>
-
-        <section className="toolbar compact-toolbar">
-          <input onChange={(event) => setBranchId(event.target.value)} placeholder="Branch ID" value={branchId} />
-          <input onChange={(event) => setToken(event.target.value)} placeholder="Staff access token" value={token} />
         </section>
 
         {message ? <p className="notice-text">{message}</p> : null}

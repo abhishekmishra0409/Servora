@@ -1,5 +1,9 @@
+// Documentation of the server-side env keys the API reads. Not enforced as an
+// allow-list — presence/strength rules live in validate-env.ts.
 export const envKeys = [
+  'NODE_ENV',
   'API_PORT',
+  'API_URL',
   'APP_NAME',
   'CLOUDINARY_API_KEY',
   'CLOUDINARY_API_SECRET',
@@ -17,6 +21,7 @@ export const envKeys = [
   'MONGODB_URI',
   'RATE_LIMIT_MAX',
   'RATE_LIMIT_TTL',
+  'REALTIME_URL',
   'STRIPE_PRICE_ENTERPRISE',
   'STRIPE_PRICE_GROWTH',
   'STRIPE_PRICE_LAUNCH',

@@ -1,17 +1,16 @@
 'use client';
 
 import type { FormEvent } from 'react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { loginStaff } from '../../lib/api-client';
-import { readCmsSettings, writeCmsSettings } from '../../lib/cms-storage';
+import { writeCmsSettings } from '../../lib/cms-storage';
 
 const staffRoles = ['Owner', 'Manager', 'Waiter', 'Kitchen', 'Cashier'];
 
 export default function StaffLoginPage() {
   const router = useRouter();
-  const [branchId, setBranchId] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -19,24 +18,19 @@ export default function StaffLoginPage() {
   const [message, setMessage] = useState('');
   const [messageTone, setMessageTone] = useState<'error' | 'success'>('error');
 
-  useEffect(() => {
-    const settings = readCmsSettings();
-    setBranchId(settings.branchId);
-  }, []);
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setBusy(true);
     setMessage('');
 
     try {
-      const session = await loginStaff(email.trim(), password, branchId.trim() || undefined);
-      const nextBranchId = session.branchId || branchId.trim();
+      const session = await loginStaff(email.trim(), password);
+      const nextBranchId = session.branchId ?? '';
       const platformRole = ['super_admin', 'platform_admin'].includes(session.role);
 
       if (!nextBranchId && !platformRole) {
         setMessageTone('error');
-        setMessage('Signed in, but no branch ID was returned for this account.');
+        setMessage('Signed in, but this account is not linked to a branch. Contact support.');
         return;
       }
 
@@ -140,20 +134,6 @@ export default function StaffLoginPage() {
                     {showPassword ? 'visibility_off' : 'visibility'}
                   </span>
                 </button>
-              </span>
-            </label>
-
-            <label className="admin-login__field">
-              <span>Branch ID <small>Optional for single-branch staff</small></span>
-              <span className="admin-login__input-wrap">
-                <span className="material-symbols-outlined" aria-hidden="true">storefront</span>
-                <input
-                  autoComplete="off"
-                  onChange={(event) => setBranchId(event.target.value)}
-                  placeholder="Leave blank for seeded demo users"
-                  type="text"
-                  value={branchId}
-                />
               </span>
             </label>
 

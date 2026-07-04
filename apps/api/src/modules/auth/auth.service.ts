@@ -22,7 +22,10 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto): Promise<StaffSession> {
-    const user = await this.userModel.findOne({ email: dto.email.toLowerCase(), active: true }).exec();
+    const user = await this.userModel
+      .findOne({ email: dto.email.toLowerCase(), active: true })
+      .select('+passwordHash +refreshTokenHash')
+      .exec();
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
@@ -117,7 +120,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    const user = await this.userModel.findById(payload.sub).exec();
+    const user = await this.userModel.findById(payload.sub).select('+refreshTokenHash').exec();
 
     if (!user?.refreshTokenHash) {
       throw new UnauthorizedException('Refresh token not available');
@@ -179,7 +182,7 @@ export class AuthService {
   }
 
   async changePassword(userId: string, dto: ChangePasswordDto): Promise<{ success: boolean }> {
-    const user = await this.userModel.findById(userId).exec();
+    const user = await this.userModel.findById(userId).select('+passwordHash +refreshTokenHash').exec();
 
     if (!user) {
       throw new UnauthorizedException('User not found');

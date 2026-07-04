@@ -1,17 +1,13 @@
 import { io, type Socket } from 'socket.io-client';
 
 const realtimeUrl = (): string => {
-  const value = process.env.NEXT_PUBLIC_REALTIME_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-  if (typeof window === 'undefined') {
-    return value;
-  }
+  const configured = process.env.NEXT_PUBLIC_REALTIME_URL || process.env.NEXT_PUBLIC_API_URL || '';
+  if (configured) return configured;
 
-  const url = new URL(value);
-  if (['localhost', '127.0.0.1', '::1'].includes(url.hostname) && !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)) {
-    url.hostname = window.location.hostname;
-  }
-
-  return url.toString();
+  // Blank config → connect to the same origin as the page. In the browser this
+  // rides the Next.js /socket.io proxy, so no host/IP is baked in. During SSR
+  // (no window) fall back to the local API port.
+  return typeof window === 'undefined' ? 'http://localhost:4000' : window.location.origin;
 };
 
 export const createSocketClient = (token?: string): Socket =>

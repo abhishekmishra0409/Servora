@@ -1,20 +1,13 @@
 import type { MenuResponse } from '@restaurent/shared';
 
-const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
-const normalizeLocalUrl = (value: string): string => {
-  if (typeof window === 'undefined') {
-    return value;
-  }
-
-  const url = new URL(value);
-  if (['localhost', '127.0.0.1', '::1'].includes(url.hostname) && !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)) {
-    url.hostname = window.location.hostname;
-  }
-
-  return url.toString().replace(/\/$/, '');
-};
-const apiUrl = configuredApiUrl ? normalizeLocalUrl(configuredApiUrl) : '';
-const API_BASE_URL = apiUrl ? (apiUrl.endsWith('/api/v1') ? apiUrl : `${apiUrl}/api/v1`) : '/api/v1';
+// Blank NEXT_PUBLIC_API_URL → call relative /api/v1 (same origin), which the
+// Next.js rewrites proxy to the API. No host/IP is baked into the bundle, so an
+// IP/DNS change never breaks browser calls. Set the var only for split-domain
+// deploys where the API is served from a different origin than the web app.
+const configuredApiUrl = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '');
+const API_BASE_URL = configuredApiUrl
+  ? (configuredApiUrl.endsWith('/api/v1') ? configuredApiUrl : `${configuredApiUrl}/api/v1`)
+  : '/api/v1';
 const cmsTokenKey = 'restaurent:cms:accessToken';
 const cmsRefreshTokenKey = 'restaurent:cms:refreshToken';
 

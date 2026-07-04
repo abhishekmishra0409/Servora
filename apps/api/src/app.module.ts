@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 import configuration from './config/configuration';
 import { resolveEnvFiles } from './config/env-files';
@@ -36,6 +37,18 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
       isGlobal: true,
       load: [configuration],
       validate: validateEnv,
+    }),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [
+          {
+            // Config ttl is in seconds; throttler expects milliseconds.
+            ttl: config.get<number>('throttling.ttl', 60) * 1000,
+            limit: config.get<number>('throttling.max', 200),
+          },
+        ],
+      }),
     }),
     DatabaseModule,
     AccessModule,

@@ -11,10 +11,11 @@ export class User {
   @Prop({ required: true })
   name!: string;
 
-  @Prop({ required: true })
+  // select:false → never loaded by queries unless explicitly `.select('+field')`.
+  @Prop({ required: true, select: false })
   passwordHash!: string;
 
-  @Prop()
+  @Prop({ select: false })
   refreshTokenHash?: string;
 
   @Prop({ default: true })
@@ -22,4 +23,14 @@ export class User {
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+// Defense in depth: even a freshly-created/hydrated doc must never serialize
+// secret fields into an API response body.
+UserSchema.set('toJSON', {
+  transform: (_doc, ret) => {
+    const record = ret as unknown as Record<string, unknown>;
+    delete record.passwordHash;
+    delete record.refreshTokenHash;
+  },
+});
 

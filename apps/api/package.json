@@ -19,6 +19,7 @@
     "@nestjs/mongoose": "^11.0.4",
     "@nestjs/platform-express": "^11.1.19",
     "@nestjs/platform-socket.io": "^11.1.19",
+    "@nestjs/throttler": "^6.5.0",
     "@nestjs/websockets": "^11.1.19",
     "@restaurent/shared": "*",
     "bcryptjs": "^3.0.3",

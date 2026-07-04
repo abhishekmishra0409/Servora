@@ -1,7 +1,9 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { WsException } from '@nestjs/websockets';
 import type { GuestJwtPayload, StaffJwtPayload } from '@restaurent/shared';
+import type { Socket } from 'socket.io';
 
 @Injectable()
 export class SocketAuthService {
@@ -9,6 +11,16 @@ export class SocketAuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {}
+
+  /** Authenticate a socket from its handshake token, throwing WsException on failure. */
+  authenticateClient(client: Socket): GuestJwtPayload | StaffJwtPayload {
+    const token = client.handshake?.auth?.token as string | undefined;
+    try {
+      return this.authenticate(token);
+    } catch {
+      throw new WsException('Socket token invalid');
+    }
+  }
 
   authenticate(token?: string): GuestJwtPayload | StaffJwtPayload {
     if (!token) {

@@ -31,6 +31,14 @@ const ensureTestEnv = (dbName: string): void => {
   process.env.MONGODB_URI = process.env.TEST_MONGODB_URI ?? 'mongodb://127.0.0.1:27017';
   process.env.MONGODB_DB_NAME = normalizeDbName(dbName);
   process.env.WEB_URL = process.env.WEB_URL ?? 'http://127.0.0.1:3000';
+  // Keep tests hermetic: never let a developer's real external-service
+  // credentials (loaded from the root .env) leak into the test process. With
+  // Stripe unconfigured, the webhook path uses the unsigned test convenience
+  // instead of requiring a live signature.
+  process.env.STRIPE_SECRET_KEY = '';
+  process.env.STRIPE_WEBHOOK_SECRET = '';
+  process.env.CLOUDINARY_API_KEY = '';
+  process.env.CLOUDINARY_API_SECRET = '';
 };
 
 export const createTestApp = async (dbName: string): Promise<INestApplication> => {

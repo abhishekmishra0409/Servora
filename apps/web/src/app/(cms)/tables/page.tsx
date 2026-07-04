@@ -18,24 +18,13 @@ import {
   type CmsTenant,
 } from '../../../lib/api-client';
 import { readCmsSettings } from '../../../lib/cms-storage';
+import { resolveCustomerOrigin } from '../../../lib/customer-origin';
 import { createSocketClient } from '../../../lib/socket';
-
-const configuredCustomerOrigin = process.env.NEXT_PUBLIC_CUSTOMER_ORIGIN || '';
-const configuredRouterIp = process.env.NEXT_PUBLIC_ROUTER_IP || '';
-
-function initialCustomerOrigin(): string {
-  if (configuredCustomerOrigin) return configuredCustomerOrigin;
-  if (typeof window === 'undefined') return configuredRouterIp ? `http://${configuredRouterIp}:3000` : 'http://localhost:3000';
-  const origin = window.location.origin;
-  return ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname) && configuredRouterIp
-    ? `http://${configuredRouterIp}:3000`
-    : origin;
-}
 
 export default function TablesPage() {
   const [branch, setBranch] = useState<CmsBranch | null>(null);
   const [branchId, setBranchId] = useState('');
-  const [customerOrigin, setCustomerOrigin] = useState(initialCustomerOrigin);
+  const [customerOrigin, setCustomerOrigin] = useState(resolveCustomerOrigin);
   const [editingId, setEditingId] = useState('');
   const [form, setForm] = useState({ capacity: '4', floorId: '', tableNo: '' });
   const [qrImages, setQrImages] = useState<Record<string, string>>({});
@@ -112,7 +101,7 @@ export default function TablesPage() {
 
   useEffect(() => {
     const settings = readCmsSettings();
-    const origin = initialCustomerOrigin();
+    const origin = resolveCustomerOrigin();
     setBranchId(settings.branchId);
     setCustomerOrigin(origin);
     setRole(settings.role);

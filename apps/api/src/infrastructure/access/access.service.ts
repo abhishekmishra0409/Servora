@@ -79,10 +79,17 @@ export class AccessService {
     }
 
     const tenant = await this.tenantModel.findById(tenantId).select('status').lean().exec();
-    if (!tenant?.status || tenant.status === 'active') {
+    // Fail closed: a token referencing a deleted/unknown tenant must not pass.
+    if (!tenant) {
+      throw new ForbiddenException('Tenant not found');
+    }
+
+    if (tenant.status === 'active') {
       return;
     }
 
+    // Any non-active status (including missing/empty) requires a healthy
+    // subscription — previously a missing status silently granted access.
     if (tenant.status !== 'archived') {
       const hasHealthySubscription = await this.subscriptionModel
         .exists({

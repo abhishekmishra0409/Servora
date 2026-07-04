@@ -15,23 +15,12 @@ import {
   type CmsTenant,
 } from '../../../lib/api-client';
 import { readCmsSettings } from '../../../lib/cms-storage';
-
-const configuredCustomerOrigin = process.env.NEXT_PUBLIC_CUSTOMER_ORIGIN || '';
-const configuredRouterIp = process.env.NEXT_PUBLIC_ROUTER_IP || '';
-
-function initialCustomerOrigin(): string {
-  if (configuredCustomerOrigin) return configuredCustomerOrigin;
-  if (typeof window === 'undefined') return configuredRouterIp ? `http://${configuredRouterIp}:3000` : 'http://localhost:3000';
-  const origin = window.location.origin;
-  return ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname) && configuredRouterIp
-    ? `http://${configuredRouterIp}:3000`
-    : origin;
-}
+import { isLocalhostOrigin, resolveCustomerOrigin } from '../../../lib/customer-origin';
 
 export default function QrPage() {
   const [branch, setBranch] = useState<CmsBranch | null>(null);
   const [branchId, setBranchId] = useState('');
-  const [customerOrigin, setCustomerOrigin] = useState(initialCustomerOrigin);
+  const [customerOrigin, setCustomerOrigin] = useState(resolveCustomerOrigin);
   const [qrImages, setQrImages] = useState<Record<string, string>>({});
   const [tables, setTables] = useState<CmsTable[]>([]);
   const [message, setMessage] = useState('Sign in to load QR tokens from the database.');
@@ -98,7 +87,7 @@ export default function QrPage() {
 
   useEffect(() => {
     const settings = readCmsSettings();
-    const origin = initialCustomerOrigin();
+    const origin = resolveCustomerOrigin();
     setBranchId(settings.branchId);
     setCustomerOrigin(origin);
     setTenantId(settings.tenantId);
@@ -133,7 +122,10 @@ export default function QrPage() {
             Customer app origin
             <input value={customerOrigin} onChange={(event) => setCustomerOrigin(event.target.value)} />
           </label>
-          <p className="muted">Open admin through this same network and print these codes. Each QR encodes the full table URL, not only the token.</p>
+          {isLocalhostOrigin(customerOrigin) ? (
+            <p className="notice-text">This origin is <strong>localhost</strong>, so the printed QR codes will only work on this computer. Open the CMS from the deployed domain before printing so the codes point at a URL customers can reach.</p>
+          ) : null}
+          <p className="muted">Each QR encodes the full table URL above, not only the token. The origin defaults to whatever address you opened the CMS from.</p>
         </div>
       </section>
       <section className="cms-table-grid">

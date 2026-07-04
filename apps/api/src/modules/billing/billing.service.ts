@@ -273,7 +273,18 @@ export class BillingService {
 
   verifyStripeWebhook(payload: Buffer, signature: string | undefined): Record<string, unknown> {
     const secret = this.configService.get<string>('billing.stripe.webhookSecret', '');
-    if (!this.stripe || !signature || !secret) {
+
+    // Whenever Stripe is configured (secret present), a valid signature is
+    // MANDATORY in every environment — no dev bypass. This closes the hole where
+    // an attacker could POST forged, unsigned "Stripe" events to drive
+    // subscription state in non-production.
+    if (this.stripe && secret) {
+      if (!signature) {
+        throw new BadRequestException('Missing Stripe webhook signature');
+      }
+    } else {
+      // Stripe not configured at all. Never trust unsigned bodies in production;
+      // allow a parsed payload only as a local/test convenience.
       if (process.env.NODE_ENV === 'production') {
         throw new BadRequestException('Stripe webhook signature verification is not configured');
       }
@@ -287,7 +298,7 @@ export class BillingService {
       };
     }
 
-    const event = this.stripe.webhooks.constructEvent(payload, signature, secret);
+    const event = this.stripe!.webhooks.constructEvent(payload, signature!, secret);
     const object = event.data.object as unknown as Record<string, unknown>;
     const metadata = typeof object.metadata === 'object' && object.metadata ? object.metadata as Record<string, unknown> : {};
     const price = this.extractStripePrice(object);

@@ -18,11 +18,14 @@ export default () => ({
     name: process.env.APP_NAME ?? 'Restaurent SaaS',
   },
   auth: {
-    accessSecret: process.env.JWT_ACCESS_SECRET ?? 'access-secret',
+    // No fallbacks: secrets are required + strength-checked in validate-env.ts.
+    // Leaving these unset makes getOrThrow fail loudly rather than silently
+    // signing tokens with a guessable default.
+    accessSecret: process.env.JWT_ACCESS_SECRET,
     accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
-    guestSecret: process.env.JWT_GUEST_SECRET ?? 'guest-secret',
+    guestSecret: process.env.JWT_GUEST_SECRET,
     guestTtl: process.env.JWT_GUEST_TTL ?? '6h',
-    refreshSecret: process.env.JWT_REFRESH_SECRET ?? 'refresh-secret',
+    refreshSecret: process.env.JWT_REFRESH_SECRET,
     refreshTtl: process.env.JWT_REFRESH_TTL ?? '7d',
   },
   billing: {

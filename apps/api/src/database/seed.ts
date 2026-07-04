@@ -7,9 +7,23 @@ dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017';
 const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || 'restaurent_saas';
 
-const TENANT_ID = new mongoose.Types.ObjectId('69eccf8686dd69a512a12cc9');
-const BRANCH_ID = new mongoose.Types.ObjectId('69eccf8686dd69a512a12cc9');
+// Safety: this seeder does destructive deleteMany() calls. Refuse to run against
+// a non-local database (e.g. Atlas) unless explicitly forced with --force.
+const isLocalMongo = /(?:localhost|127\.0\.0\.1)/.test(MONGODB_URI);
+const forced = process.argv.includes('--force');
+if (!isLocalMongo && !forced) {
+  const redacted = MONGODB_URI.replace(/\/\/[^@]*@/, '//***@');
+  console.error(`Refusing to seed a non-local database (${redacted}). Re-run with --force to override.`);
+  process.exit(1);
+}
 
+const TENANT_ID = new mongoose.Types.ObjectId('69eccf8686dd69a512a12cc9');
+// Distinct from TENANT_ID — a branch id must never collide with its tenant id.
+const BRANCH_ID = new mongoose.Types.ObjectId('69eccf8686dd69a512a12cca');
+
+// NOTE: these ad-hoc schemas duplicate the real app schemas and can drift from
+// them. Prefer registering the app models from the dist registry (see the
+// pattern in scripts/_db.ts) in a future cleanup.
 const TableSchema = new mongoose.Schema({
   tenantId: mongoose.Schema.Types.ObjectId,
   branchId: mongoose.Schema.Types.ObjectId,
