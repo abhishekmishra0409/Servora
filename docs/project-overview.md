@@ -117,7 +117,7 @@ The API is the source of truth for transactional operations. Socket.IO runs on t
 | --- | --- |
 | Auth | Staff login, refresh, logout, current user |
 | Tenants and branches | Multi-tenant restaurant structure |
-| Tables and QR | Table list, table creation, QR tokens, QR regeneration, print sheet |
+| Tables and QR | Table list, table creation, QR tokens, regeneration, and PNG/PDF download |
 | Outlets | Branch create, rename, and archive, capped by the plan |
 | Roles and permissions | Tenant-defined roles and per-outlet permission resolution |
 | Entitlements | Plan limits and feature flags, enforced on create |
@@ -300,7 +300,7 @@ CMS:
 - Permission-driven navigation and per-control gating
 - Outlet create/rename/archive with an outlet switcher
 - Plan usage meters and upgrade prompts when a cap is reached
-- Table QR print sheet
+- Table QR download as PNG per table or one PDF per outlet
 
 API:
 

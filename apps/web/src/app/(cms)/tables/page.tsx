@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 
 import { PageShell } from '../../../components/page-shell';
 import { PlanLimitNotice, UsageStrip } from '../../../components/plan-limit-notice';
@@ -15,6 +14,7 @@ import {
   type CmsTable,
 } from '../../../lib/api-client';
 import { isLocalhostOrigin } from '../../../lib/customer-origin';
+import { downloadTableQrPdf, downloadTableQrPng, type TableQrCard } from '../../../lib/qr-download';
 import { createSocketClient } from '../../../lib/socket';
 import { useTableQr } from '../../../lib/use-table-qr';
 
@@ -25,13 +25,13 @@ export default function TablesPage() {
   const [form, setForm] = useState({ capacity: '4', floorId: '', tableNo: '' });
   const [limitError, setLimitError] = useState<ApiError | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState('');
+  const [downloading, setDownloading] = useState('');
 
   const { branchId, tenantId, token } = session;
   const canAdd = session.can('tables:add');
   const canEdit = session.can('tables:edit');
   const canDelete = session.can('tables:delete');
-  const canRegenerate = session.can('tables:regenerate-qr', 'qr:regenerate');
-  const canPrint = session.can('qr:view');
+  const canRegenerate = session.can('tables:regenerate-qr');
 
   // Seed the floor picker from whatever floor the existing tables sit on.
   useEffect(() => {
@@ -121,9 +121,48 @@ export default function TablesPage() {
     }
   }
 
+  /** Everything the downloaded artwork prints, resolved from live data. */
+  function cardFor(table: CmsTable): TableQrCard {
+    return {
+      brand: qr.tenant?.legalName ?? '',
+      outlet: qr.branch?.name ?? '',
+      tableNo: table.tableNo,
+      url: qr.customerUrl(table.qrToken),
+    };
+  }
+
+  async function downloadOne(table: CmsTable): Promise<void> {
+    const tableId = documentId(table);
+    setDownloading(tableId);
+
+    try {
+      await downloadTableQrPng(cardFor(table));
+    } catch (error) {
+      qr.setMessage(error instanceof Error ? error.message : 'Could not build the download.');
+    } finally {
+      setDownloading('');
+    }
+  }
+
+  async function downloadAll(): Promise<void> {
+    setDownloading('all');
+
+    try {
+      const cards = qr.tables.filter((table) => table.qrToken).map(cardFor);
+      const outlet = qr.branch?.name ?? 'outlet';
+
+      await downloadTableQrPdf(cards, `${outlet.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-table-qr-codes.pdf`);
+    } catch (error) {
+      qr.setMessage(error instanceof Error ? error.message : 'Could not build the PDF.');
+    } finally {
+      setDownloading('');
+    }
+  }
+
   const cap = session.entitlements?.limits.tables ?? 0;
   const used = session.entitlements?.usage.tables ?? qr.tables.length;
   const atCap = cap > 0 && used >= cap;
+  const downloadable = qr.tables.filter((table) => table.qrToken).length;
 
   return (
     <PageShell
@@ -131,11 +170,16 @@ export default function TablesPage() {
       eyebrow="Tables"
       title="Table and QR operations"
       toolbar={
-        canPrint ? (
-          <Link className="button-secondary" href="/qr">
-            <span aria-hidden="true" className="material-symbols-outlined">print</span>
-            Print QR codes
-          </Link>
+        downloadable > 0 ? (
+          <button
+            className="button-secondary"
+            disabled={downloading !== ''}
+            onClick={() => void downloadAll()}
+            type="button"
+          >
+            <span aria-hidden="true" className="material-symbols-outlined">picture_as_pdf</span>
+            {downloading === 'all' ? 'Preparing PDF...' : `Download all ${downloadable} as PDF`}
+          </button>
         ) : null
       }
     >
@@ -195,7 +239,7 @@ export default function TablesPage() {
               {isLocalhostOrigin(qr.customerOrigin) ? (
                 <p className="notice-text">
                   This origin is <strong>localhost</strong>, so these codes only work on this computer.
-                  Open the CMS from your real domain before printing.
+                  Open the CMS from your real domain before you download them.
                 </p>
               ) : null}
               <p className="muted">
@@ -234,6 +278,17 @@ export default function TablesPage() {
                 {url ? <a href={url} rel="noreferrer" target="_blank">{url}</a> : null}
               </div>
               <div className="action-row">
+                {table.qrToken ? (
+                  <button
+                    className="button-secondary"
+                    disabled={downloading !== ''}
+                    onClick={() => void downloadOne(table)}
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="material-symbols-outlined">download</span>
+                    {downloading === tableId ? 'Preparing...' : 'Download'}
+                  </button>
+                ) : null}
                 {canEdit ? (
                   <button className="button-secondary" onClick={() => edit(table)} type="button">Edit</button>
                 ) : null}

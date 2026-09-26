@@ -103,7 +103,10 @@ export const SCREENS: ScreenDefinition[] = [
   },
   {
     actions: ['view', 'add', 'edit', 'delete'],
-    advanced: [{ key: 'regenerate-qr', label: 'Regenerate table QR' }],
+    advanced: [
+      { key: 'regenerate-qr', label: 'Regenerate table QR' },
+      { key: 'download-qr', label: 'Download QR artwork' },
+    ],
     group: 'operations',
     href: '/tables',
     icon: 'table_restaurant',
@@ -117,15 +120,6 @@ export const SCREENS: ScreenDefinition[] = [
     icon: 'floor',
     key: 'floors',
     label: 'Floors',
-  },
-  {
-    actions: ['view'],
-    advanced: [{ key: 'regenerate', label: 'Regenerate QR codes' }],
-    group: 'operations',
-    href: '/qr',
-    icon: 'qr_code_2',
-    key: 'qr',
-    label: 'QR Codes',
   },
   {
     actions: ['view'],
@@ -323,7 +317,6 @@ export const BUILTIN_ROLE_PERMISSIONS: Record<string, string[]> = {
     'bills:mark-cash-paid',
     ...every('tables'),
     ...every('floors'),
-    ...every('qr'),
     ...every('menu-categories'),
     ...every('menu-items'),
     ...every('menu-schedules'),

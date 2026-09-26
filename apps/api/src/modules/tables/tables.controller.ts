@@ -53,7 +53,7 @@ export class TablesController {
   }
 
   @Post('qr/regenerate')
-  @RequirePermissions('tables:regenerate-qr', 'qr:regenerate')
+  @RequirePermissions('tables:regenerate-qr')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager)
   async regenerate(@Body() dto: RegenerateQrDto, @CurrentUser() user: StaffJwtPayload): Promise<{ token: string; version: number }> {
     await this.accessService.assertTableAccess(user, dto.tableId);

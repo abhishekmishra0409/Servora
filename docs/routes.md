@@ -4,9 +4,8 @@
 
 - Dashboard: KPIs, live order queue, service request signals, and realtime branch updates.
 - Orders: grouped status list, confirm/reject actions, and order state transitions.
-- Tables: table CRUD, customer QR preview and regeneration, realtime table status, and floor-aware operations.
+- Tables: table CRUD, customer QR preview, regeneration, and download (PNG per table or one PDF for the whole outlet), realtime table status, and floor-aware operations. There is no separate QR screen.
 - Floors: create, update, and delete branch floors.
-- QR: print sheet for table QR codes - codes per page, origin check, and a print stylesheet that strips the app chrome. Creating and regenerating codes lives on the tables screen.
 - Menu item editor: basics, pricing, add-ons, scheduling, Cloudinary upload, and media preview.
 - Audit logs: owner/manager review of staff, menu, table, order, service, and billing actions.
 - Analytics: branch overview and menu mix with realtime refresh.

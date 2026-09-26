@@ -17,7 +17,7 @@
 - Reaching a plan cap blocks new staff, tables, outlets, bills, and roles with a PLAN_LIMIT_REACHED 403, while existing records keep working.
 - Usage meters on the subscription screen match the actual record counts.
 - Archiving an outlet is refused when it is the tenant's last active one.
-- Table QR codes print without the sidebar or page chrome, and printing is blocked while the CMS is open on localhost.
+- A downloaded table QR (PNG or the outlet PDF) carries the restaurant name, outlet, table number, and a code that resolves to that table's customer URL.
 - CMS audit logs and floor management pages render loading, empty, success, and error states.
 - Customer menu dietary and allergen filters work with live menu data.
 - `/ready` reports unhealthy when MongoDB is unavailable.

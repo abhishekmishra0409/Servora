@@ -15,15 +15,15 @@ A permission is `<screen>:<action>`, for example `orders:view` or
 `packages/shared/src/screen-permissions.ts` and is the single source of truth
 for the API guard, the CMS navigation, and the tenant-facing role builder.
 
-- 19 screens (18 tenant-assignable plus one platform screen), 63 permissions.
+- 18 screens (17 tenant-assignable plus one platform screen), 62 permissions.
 - CRUD actions are `view`, `add`, `edit`, `delete`. A screen only declares the
   actions a real endpoint backs, so the role builder renders an em-dash rather
   than a checkbox for the rest.
 - Non-CRUD actions are "advanced" and named after the verb: `orders:confirm`,
-  `bills:mark-cash-paid`, `qr:regenerate`.
+  `bills:mark-cash-paid`, `tables:regenerate-qr`.
 - `dashboard:view` and `settings:view` are **locked** — always granted, so every
   role has somewhere to land after login.
-- Screens are grouped for the UI: operations (8), menu (3), admin (7).
+- Screens are grouped for the UI: operations (7), menu (3), admin (7).
 
 The colon separator is deliberate: it keeps these strings unambiguous against
 the legacy dotted permissions (`orders.read`, `menu.manage`) in
@@ -36,8 +36,8 @@ change to every tenant is a one-line edit rather than a backfill:
 
 | Role | Permissions | Notes |
 | --- | --- | --- |
-| `owner` | 61 | every tenant-assignable permission |
-| `manager` | 42 | no staff, roles, audit logs, subscription, or `bills:checkout` |
+| `owner` | 60 | every tenant-assignable permission |
+| `manager` | 41 | no staff, roles, audit logs, subscription, or `bills:checkout` |
 | `waiter` | 17 | floor work: orders, bills, tables (view), requests |
 | `kitchen` | 10 | kitchen board plus the preparing/ready order statuses |
 | `cashier` | 9 | orders (view) and the full bill/payment set |

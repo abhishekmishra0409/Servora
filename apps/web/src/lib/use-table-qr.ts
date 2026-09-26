@@ -39,9 +39,8 @@ export interface TableQrState {
  * Loads the tables for the current branch and renders a customer QR image for
  * each one.
  *
- * The tables screen and the print sheet both need exactly this, and they used
- * to carry byte-identical copies of it — the only difference between the two
- * pages was the QR pixel size.
+ * Downloads deliberately do not reuse these images: `qr-download.ts` re-renders
+ * the code at print resolution rather than upscaling this on-screen preview.
  */
 export function useTableQr({ width = 220 }: UseTableQrOptions = {}): TableQrState {
   const session = useCmsSession();
