@@ -117,7 +117,10 @@ The API is the source of truth for transactional operations. Socket.IO runs on t
 | --- | --- |
 | Auth | Staff login, refresh, logout, current user |
 | Tenants and branches | Multi-tenant restaurant structure |
-| Tables and QR | Table list, table creation, QR tokens, QR regeneration |
+| Tables and QR | Table list, table creation, QR tokens, QR regeneration, print sheet |
+| Outlets | Branch create, rename, and archive, capped by the plan |
+| Roles and permissions | Tenant-defined roles and per-outlet permission resolution |
+| Entitlements | Plan limits and feature flags, enforced on create |
 | Guest sessions | Customer join flow and guest JWTs |
 | Buckets | Shared table bucket, add/update/remove item, submit order |
 | Menu | Public menu, CMS menu categories/items |
@@ -146,6 +149,11 @@ Base API path: `/api/v1`
 | Service requests | `GET /service-requests?branchId=...` | Waiter service queue |
 | CMS tables | `GET /cms/tables?branchId=...` | Branch table list |
 | CMS menu | `GET /cms/menu/items?branchId=...` | Branch menu item list |
+| Session | `GET /auth/session` | Effective permissions, outlets, and plan usage |
+| Outlet switch | `POST /auth/switch-branch` | Re-issue a session for another outlet |
+| Roles | `GET /cms/roles?tenantId=...` | Built-in plus tenant-defined roles |
+| Entitlements | `GET /cms/entitlements?tenantId=...` | Plan limits with live usage |
+| Outlets | `POST /branches` | Create a location, capped by the plan |
 
 ## 8. Key Data Model Concepts
 
@@ -163,6 +171,8 @@ erDiagram
   TABLE_SESSION ||--o{ SERVICE_REQUEST : creates
   BRANCH ||--o{ MENU_ITEM : offers
   BRANCH ||--o{ USER_MEMBERSHIP : assigns
+  TENANT ||--o{ ROLE : defines
+  ROLE ||--o{ USER_MEMBERSHIP : assigned_by_key
 ```
 
 Important ideas:
@@ -173,7 +183,8 @@ Important ideas:
 - A table session begins when customers join through a QR.
 - A bucket is the shared draft order for the table.
 - An order is an immutable snapshot created when the bucket is submitted.
-- Staff users work inside tenant/branch memberships.
+- Staff users work inside tenant/branch memberships, and can hold a different role at each outlet.
+- A role is either built-in (defined in code) or tenant-defined (a `roles` document). See [permissions.md](permissions.md).
 
 ## 9. Current Demo Data
 
@@ -191,9 +202,16 @@ Seeded users:
 | Role | Email | Password | App |
 | --- | --- | --- | --- |
 | Owner | `owner@harborgrill.test` | `OwnerPass123!` | `http://localhost:3000/login` |
+| Manager | `manager@harborgrill.test` | `ManagerPass123!` | `http://localhost:3000/login` |
 | Waiter | `waiter@harborgrill.test` | `WaiterPass123!` | `http://localhost:3000/login` |
 | Kitchen | `kitchen@harborgrill.test` | `KitchenPass123!` | `http://localhost:3000/login` |
+| Cashier | `cashier@harborgrill.test` | `CashierPass123!` | `http://localhost:3000/login` |
+| Super admin | `superadmin@servora.test` | from `.env` or `SuperAdminPass123!` | `http://localhost:3000/login` |
 | Platform admin | `platform@example.com` | from `.env` or `ChangeMe123!` | Admin tooling |
+
+These are the values `npm run seed` writes. Passwords changed after seeding are
+not reflected here — check with whoever owns the environment. Login requires at
+least 8 characters (`LoginDto`), so any replacement must meet that.
 
 For owner, waiter, kitchen, manager, and cashier login, Branch ID can be left blank for the seeded single-branch account. The login response returns the branch ID and role, and the unified frontend stores them automatically.
 
@@ -278,6 +296,11 @@ CMS:
 - Dashboard live KPIs
 - Live order management
 - Menu item list/review
+- Tenant-defined roles built on a screen-by-action grid
+- Permission-driven navigation and per-control gating
+- Outlet create/rename/archive with an outlet switcher
+- Plan usage meters and upgrade prompts when a cap is reached
+- Table QR print sheet
 
 API:
 
@@ -287,12 +310,17 @@ API:
 - Staff order workflow
 - Service request list/resolve
 - CMS table/menu APIs
+- Screen-level permission enforcement on every staff route
+- Tenant role CRUD with escalation and self-lockout guards
+- Plan entitlement checks on staff, tables, outlets, bills, menu items, and roles
 - Billing/media/webhook foundations
 
 ## 12. Known Gaps And Future Improvements
 
 The current project is an MVP foundation. The next practical improvements are:
 
+- Assign roles per outlet from the staff screen. The data model, `POST /auth/switch-branch`, and the outlet switcher all support it, but the staff editor still edits one membership per branch rather than showing a person with a row per outlet.
+- Reserve plan capacity atomically. Limit checks count and compare, so concurrent creates can race past a cap by one. `Counter` is the intended primitive.
 - Replace manual/token-style CMS controls fully with protected routes and auth-aware layouts.
 - Expand realtime coverage on customer and staff screens while keeping polling fallbacks for resilience.
 - Add full CMS menu item create/edit forms.
@@ -317,6 +345,7 @@ For technical audiences:
 - Explain the API as source of truth.
 - Explain MongoDB entities: tenant, branch, table, session, bucket, order.
 - Explain JWT auth separation between guest and staff.
+- Explain why permissions are resolved per request instead of carried in the token.
 - Explain why order submission uses idempotency.
 - Explain realtime updates through Socket.IO rooms on the API origin.
 

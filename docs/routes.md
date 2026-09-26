@@ -10,7 +10,14 @@
 - Menu item editor: basics, pricing, add-ons, scheduling, Cloudinary upload, and media preview.
 - Audit logs: owner/manager review of staff, menu, table, order, service, and billing actions.
 - Analytics: branch overview and menu mix with realtime refresh.
-- Subscription: SaaS billing and portal handoff.
+- Staff: staff accounts per outlet, with the role picker fed from this tenant's
+  built-in and custom roles.
+- Roles and Access (`/staff/roles`): build tenant-defined roles on a screen-by-
+  action grid, starting from a built-in template. Owner-only by default.
+- Outlets (`/branches`): visible to any staff role; creating, renaming, and
+  archiving are owner-level and additionally gated by the plan's outlet cap and
+  the `multi_outlet` feature. The last active outlet cannot be archived.
+- Subscription: SaaS billing, portal handoff, and plan usage meters.
 
 ## Customer PWA
 
