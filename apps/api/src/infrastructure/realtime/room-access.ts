@@ -1,6 +1,4 @@
-import { UserRole, type StaffJwtPayload } from '@restaurent/shared';
-
-const GLOBAL_ADMIN_ROLES: readonly UserRole[] = [UserRole.SuperAdmin, UserRole.PlatformAdmin];
+import { isPlatformRoleKey, type StaffJwtPayload } from '@restaurent/shared';
 
 /**
  * Whether a staff member may subscribe to realtime updates for a tenant/branch-
@@ -11,7 +9,7 @@ export const staffCanAccessRecord = (
   user: StaffJwtPayload,
   record: { tenantId: string; branchId?: string },
 ): boolean => {
-  if (GLOBAL_ADMIN_ROLES.includes(user.role)) {
+  if (isPlatformRoleKey(user.role)) {
     return true;
   }
 

@@ -4,13 +4,15 @@ import { UserRole } from '@restaurent/shared';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { StaffJwtGuard } from '../../common/guards/staff-jwt.guard';
 import { AccessService } from '../../infrastructure/access/access.service';
 import { AuditService } from '../../infrastructure/audit/audit.service';
 
 @Controller('cms/audit-logs')
-@UseGuards(StaffJwtGuard, RolesGuard)
+@UseGuards(StaffJwtGuard, RolesGuard, PermissionsGuard)
 @Roles(UserRole.PlatformAdmin, UserRole.Owner)
 export class AuditLogsController {
   constructor(
@@ -19,6 +21,7 @@ export class AuditLogsController {
   ) {}
 
   @Get()
+  @RequirePermissions('audit-logs:view')
   async list(
     @Query('tenantId') tenantId: string,
     @Query('branchId') branchId: string | undefined,

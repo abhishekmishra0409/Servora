@@ -4,8 +4,10 @@ import type { GuestJwtPayload, StaffJwtPayload } from '@restaurent/shared';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { GuestJwtGuard } from '../../common/guards/guest-jwt.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { StaffJwtGuard } from '../../common/guards/staff-jwt.guard';
 import { AccessService } from '../../infrastructure/access/access.service';
 import { CreateServiceRequestDto } from './dto';
@@ -33,17 +35,19 @@ export class ServiceRequestsController {
     return this.serviceRequestsService.getCurrentForGuest(user);
   }
 
-  @UseGuards(StaffJwtGuard, RolesGuard)
+  @UseGuards(StaffJwtGuard, RolesGuard, PermissionsGuard)
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter)
   @Get()
+  @RequirePermissions('service-requests:view')
   async list(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertBranchAccess(user, branchId);
     return this.serviceRequestsService.list(branchId);
   }
 
-  @UseGuards(StaffJwtGuard, RolesGuard)
+  @UseGuards(StaffJwtGuard, RolesGuard, PermissionsGuard)
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter)
   @Patch(':id/resolve')
+  @RequirePermissions('service-requests:resolve')
   resolve(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     return this.serviceRequestsService.resolve(id, user.sub);
   }

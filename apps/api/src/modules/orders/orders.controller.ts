@@ -4,13 +4,15 @@ import { OrderStatus, UserRole } from '@restaurent/shared';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { StaffJwtGuard } from '../../common/guards/staff-jwt.guard';
 import { AccessService } from '../../infrastructure/access/access.service';
 import { OrdersService } from './orders.service';
 
 @Controller('orders')
-@UseGuards(StaffJwtGuard, RolesGuard)
+@UseGuards(StaffJwtGuard, RolesGuard, PermissionsGuard)
 export class OrdersController {
   constructor(
     private readonly accessService: AccessService,
@@ -18,6 +20,7 @@ export class OrdersController {
   ) {}
 
   @Get('live')
+  @RequirePermissions('orders:view')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Kitchen, UserRole.Cashier)
   async getLive(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertBranchAccess(user, branchId);
@@ -25,6 +28,7 @@ export class OrdersController {
   }
 
   @Get('billable')
+  @RequirePermissions('bills:view')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
   async getBillable(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertBranchAccess(user, branchId);
@@ -32,6 +36,7 @@ export class OrdersController {
   }
 
   @Get(':id')
+  @RequirePermissions('orders:view')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Kitchen, UserRole.Cashier)
   async getById(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertOrderAccess(user, id);
@@ -39,6 +44,7 @@ export class OrdersController {
   }
 
   @Post(':id/confirm')
+  @RequirePermissions('orders:confirm')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter)
   async confirm(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertOrderAccess(user, id);
@@ -46,6 +52,7 @@ export class OrdersController {
   }
 
   @Post(':id/reject')
+  @RequirePermissions('orders:reject')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter)
   async reject(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertOrderAccess(user, id);
@@ -53,6 +60,7 @@ export class OrdersController {
   }
 
   @Patch(':id/status')
+  @RequirePermissions('orders:edit', 'orders:status-preparing', 'orders:status-ready', 'orders:status-served')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Kitchen)
   async updateStatus(@Param('id') id: string, @Body('status') status: OrderStatus, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     this.assertStatusActionAllowed(user.role, status);
@@ -60,8 +68,8 @@ export class OrdersController {
     return this.ordersService.updateStatus(id, status, user.sub);
   }
 
-  private assertStatusActionAllowed(role: UserRole, status: OrderStatus): void {
-    if ([UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager].includes(role)) {
+  private assertStatusActionAllowed(role: string, status: OrderStatus): void {
+    if (([UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager] as string[]).includes(role)) {
       return;
     }
 

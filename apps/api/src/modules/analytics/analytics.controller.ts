@@ -4,13 +4,15 @@ import type { StaffJwtPayload } from '@restaurent/shared';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { StaffJwtGuard } from '../../common/guards/staff-jwt.guard';
 import { AccessService } from '../../infrastructure/access/access.service';
 import { AnalyticsService } from './analytics.service';
 
 @Controller('analytics')
-@UseGuards(StaffJwtGuard, RolesGuard)
+@UseGuards(StaffJwtGuard, RolesGuard, PermissionsGuard)
 @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager)
 export class AnalyticsController {
   constructor(
@@ -19,12 +21,14 @@ export class AnalyticsController {
   ) {}
 
   @Get('overview')
+  @RequirePermissions('analytics:view')
   async overview(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertBranchAccess(user, branchId);
     return this.analyticsService.overview(branchId);
   }
 
   @Get('menu')
+  @RequirePermissions('analytics:view')
   async menu(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertBranchAccess(user, branchId);
     return this.analyticsService.menu(branchId);
