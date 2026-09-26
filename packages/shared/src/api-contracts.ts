@@ -5,9 +5,9 @@ import type {
   ServiceRequestStatus,
   SubscriptionStatus,
   TableStatus,
-  UserRole,
 } from './enums';
 import type { MenuItem, MenuCategory } from './menu-types';
+import type { RoleKey } from './screen-permissions';
 
 export interface TenantSummary {
   id: string;
@@ -28,8 +28,10 @@ export interface BranchSummary {
 export interface StaffSession {
   accessToken: string;
   branchId?: string;
+  /** Effective permissions for this session, so the CMS can render nav on first paint. */
+  permissions?: string[];
   refreshToken: string;
-  role: UserRole;
+  role: RoleKey;
   tenantId: string;
   userId: string;
 }

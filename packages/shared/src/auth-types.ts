@@ -1,9 +1,10 @@
-import type { UserRole } from './enums';
+import type { RoleKey } from './screen-permissions';
 
 export interface StaffJwtPayload {
   branchId?: string;
   email: string;
-  role: UserRole;
+  /** Built-in `UserRole` value or a tenant-defined role key. */
+  role: RoleKey;
   sub: string;
   tenantId: string;
   type: 'staff';
