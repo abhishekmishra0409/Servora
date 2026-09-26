@@ -41,6 +41,17 @@ export class SubscriptionPlan {
   @Prop({ default: 0 })
   monthlyBillLimit!: number;
 
+  @Prop({ default: 0 })
+  menuItemLimit!: number;
+
+  /** How many roles a tenant may define. 0 = none, matching the other limits. */
+  @Prop({ default: 0 })
+  customRoleLimit!: number;
+
+  /** Capability flags from PLAN_FEATURES, gating whole screens. */
+  @Prop({ type: [String], default: [] })
+  features!: string[];
+
   @Prop({ type: [String], default: [] })
   perks!: string[];
 }

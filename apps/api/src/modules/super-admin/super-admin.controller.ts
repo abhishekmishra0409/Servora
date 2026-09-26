@@ -4,20 +4,24 @@ import { UserRole } from '@restaurent/shared';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { StaffJwtGuard } from '../../common/guards/staff-jwt.guard';
 import {
   CreateTenantDto,
   UpdatePlanSettingsDto,
   UpdateTenantDto,
+  UpdateTenantEntitlementsDto,
   UpdateTenantFeaturesDto,
   UpdateTenantStatusDto,
 } from './dto';
 import { SuperAdminService } from './super-admin.service';
 
 @Controller('super-admin')
-@UseGuards(StaffJwtGuard, RolesGuard)
+@UseGuards(StaffJwtGuard, RolesGuard, PermissionsGuard)
 @Roles(UserRole.SuperAdmin, UserRole.PlatformAdmin)
+@RequirePermissions('platform:manage')
 export class SuperAdminController {
   constructor(private readonly superAdminService: SuperAdminService) {}
 
@@ -65,6 +69,15 @@ export class SuperAdminController {
     @CurrentUser() user: StaffJwtPayload,
   ): Promise<unknown> {
     return this.superAdminService.updateTenantFeatures(id, dto, user);
+  }
+
+  @Patch('tenants/:id/entitlements')
+  updateTenantEntitlements(
+    @Param('id') id: string,
+    @Body() dto: UpdateTenantEntitlementsDto,
+    @CurrentUser() user: StaffJwtPayload,
+  ): Promise<unknown> {
+    return this.superAdminService.updateTenantEntitlements(id, dto, user);
   }
 
   @Get('plans')

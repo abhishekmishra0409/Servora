@@ -13,6 +13,7 @@ import { AuditService } from '../../infrastructure/audit/audit.service';
 import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
 import { BillingService } from '../billing/billing.service';
 import { CreatePaymentCheckoutDto } from './dto';
+import { EntitlementsService } from '../../infrastructure/entitlements/entitlements.service';
 
 @Injectable()
 export class PaymentsService {
@@ -25,6 +26,7 @@ export class PaymentsService {
     private readonly billingService: BillingService,
     private readonly configService: ConfigService,
     private readonly realtimePublisher: RealtimePublisher,
+    private readonly entitlements: EntitlementsService,
   ) { }
 
   async requestBill(orderId: string, actorUserId?: string): Promise<Payment> {
@@ -55,7 +57,7 @@ export class PaymentsService {
       .exec();
 
     if (!payment) {
-      await this.assertMonthlyBillLimit(firstOrder.tenantId);
+      await this.entitlements.assertCanCreate(firstOrder.tenantId, 'monthlyBills');
       payment = await this.paymentModel.create({
         amount,
         branchId: firstOrder.branchId,
@@ -190,7 +192,7 @@ export class PaymentsService {
     const provider = dto.provider ?? 'stripe';
     const existingPayment = await this.paymentModel.findOne({ orderId: dto.orderId, provider }).exec();
     if (!existingPayment) {
-      await this.assertMonthlyBillLimit(order.tenantId);
+      await this.entitlements.assertCanCreate(order.tenantId, 'monthlyBills');
     }
     const payment = await this.paymentModel.findOneAndUpdate(
       { orderId: dto.orderId, provider },
@@ -409,21 +411,4 @@ export class PaymentsService {
     }
   }
 
-  private async assertMonthlyBillLimit(tenantId: string): Promise<void> {
-    const plan = await this.billingService.getTenantBillingPlan(tenantId);
-    const monthlyBillLimit = Number(plan?.monthlyBillLimit ?? 0);
-    if (!monthlyBillLimit) {
-      return;
-    }
-
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-    const billCount = await this.paymentModel
-      .countDocuments({ tenantId, createdAt: { $gte: startOfMonth } })
-      .exec();
-    if (billCount >= monthlyBillLimit) {
-      throw new BadRequestException(`Your subscription allows up to ${monthlyBillLimit} generated bills per month.`);
-    }
-  }
 }
