@@ -1,151 +1,84 @@
-import { hasPermission, PERMISSIONS, type Permission, UserRole } from '@restaurent/shared';
+import {
+  isPlatformRoleKey,
+  permissionsForBuiltinRole,
+  SCREENS,
+  expandPermissions,
+  type ScreenGroup,
+} from '@restaurent/shared';
 
 export interface AppNavLink {
+  group: ScreenGroup;
   href: string;
   icon: string;
   label: string;
-  permissions: Permission[];
-  roles?: UserRole[];
+  /** Registry screen key; the link shows when the user holds `<screen>:view`. */
+  screen: string;
 }
 
-const platformRoles: UserRole[] = [UserRole.PlatformAdmin, UserRole.SuperAdmin];
-const ownerRoles: UserRole[] = [UserRole.Owner];
-const managerRoles: UserRole[] = [...ownerRoles, UserRole.Manager];
-const waiterRoles: UserRole[] = [...ownerRoles, UserRole.Manager, UserRole.Waiter];
-const staffRoles: UserRole[] = [UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Kitchen, UserRole.Cashier];
+/**
+ * Navigation is derived from the shared screen registry rather than a
+ * hand-maintained list, so the sidebar always matches what the role builder
+ * offers. The old `roles: UserRole[]` field is gone: a tenant-defined role is
+ * not a `UserRole`, and gating on one made every custom role see an empty
+ * sidebar.
+ */
+export const appNavLinks: AppNavLink[] = SCREENS.filter(
+  (screen) => screen.href && !screen.platformOnly,
+).map((screen) => ({
+  group: screen.group,
+  href: screen.href as string,
+  icon: screen.icon,
+  label: screen.label,
+  screen: screen.key,
+}));
 
-export const appNavLinks: AppNavLink[] = [
-  {
-    href: '/super-admin',
-    icon: 'dashboard',
-    label: 'Dashboard',
-    permissions: [PERMISSIONS.platformManage],
-    roles: platformRoles,
-  },
-  {
-    href: '/super-admin/tenants',
-    icon: 'apartment',
-    label: 'Tenants',
-    permissions: [PERMISSIONS.platformManage],
-    roles: platformRoles,
-  },
-  {
-    href: '/super-admin/system-health',
-    icon: 'monitor_heart',
-    label: 'System Health',
-    permissions: [PERMISSIONS.platformManage],
-    roles: platformRoles,
-  },
-  {
-    href: '/super-admin/subscriptions',
-    icon: 'workspace_premium',
-    label: 'Manage Subscription',
-    permissions: [PERMISSIONS.platformManage],
-    roles: platformRoles,
-  },
-  {
-    href: '/super-admin/billing',
-    icon: 'payments',
-    label: 'Billing',
-    permissions: [PERMISSIONS.platformManage],
-    roles: platformRoles,
-  },
-  {
-    href: '/super-admin/audit-logs',
-    icon: 'manage_search',
-    label: 'Audit Logs',
-    permissions: [PERMISSIONS.platformManage],
-    roles: platformRoles,
-  },
-  {
-    href: '/super-admin/settings',
-    icon: 'settings',
-    label: 'Settings',
-    permissions: [PERMISSIONS.platformManage],
-    roles: platformRoles,
-  },
-  {
-    href: '/dashboard',
-    icon: 'dashboard',
-    label: 'Dashboard',
-    permissions: [],
-    roles: [UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Kitchen, UserRole.Cashier],
-  },
-  {
-    href: '/orders',
-    icon: 'receipt_long',
-    label: 'Orders',
-    permissions: [PERMISSIONS.orderRead],
-    roles: [...managerRoles, UserRole.Waiter, UserRole.Cashier],
-  },
-  {
-    href: '/kitchen-board',
-    icon: 'soup_kitchen',
-    label: 'Kitchen Board',
-    permissions: [PERMISSIONS.kitchen],
-    roles: [...ownerRoles, UserRole.Kitchen],
-  },
-  {
-    href: '/bills',
-    icon: 'payments',
-    label: 'Bills',
-    permissions: [PERMISSIONS.billing, PERMISSIONS.orderManage],
-    roles: [...managerRoles, UserRole.Waiter, UserRole.Cashier],
-  },
-  { href: '/tables', icon: 'table_restaurant', label: 'Tables', permissions: [PERMISSIONS.tableManage], roles: waiterRoles },
-  { href: '/floors', icon: 'layers', label: 'Floors', permissions: [PERMISSIONS.tableManage], roles: managerRoles },
-  { href: '/qr', icon: 'qr_code_2', label: 'QR Codes', permissions: [PERMISSIONS.tableManage], roles: managerRoles },
-  { href: '/menu/categories', icon: 'category', label: 'Categories', permissions: [PERMISSIONS.menuManage], roles: managerRoles },
-  { href: '/menu/items', icon: 'menu_book', label: 'Menu Items', permissions: [PERMISSIONS.menuManage], roles: managerRoles },
-  { href: '/menu/schedules', icon: 'event_available', label: 'Schedules', permissions: [PERMISSIONS.menuManage], roles: managerRoles },
-  {
-    href: '/service-requests',
-    icon: 'notifications_active',
-    label: 'Requests',
-    permissions: [PERMISSIONS.serviceRequestManage],
-    roles: waiterRoles,
-  },
-  { href: '/analytics', icon: 'monitoring', label: 'Analytics', permissions: [PERMISSIONS.analytics], roles: managerRoles },
-  { href: '/staff', icon: 'groups', label: 'Staff', permissions: [PERMISSIONS.staffManage], roles: ownerRoles },
-  { href: '/audit-logs', icon: 'manage_search', label: 'Audit Logs', permissions: [PERMISSIONS.staffManage], roles: ownerRoles },
-  { href: '/subscription', icon: 'workspace_premium', label: 'Subscription', permissions: [PERMISSIONS.billing], roles: ownerRoles },
-  { href: '/settings', icon: 'settings', label: 'Settings', permissions: [], roles: staffRoles },
+/** Platform consoles are client-side only and never routed through tenant roles. */
+export const platformNavLinks: AppNavLink[] = [
+  { group: 'admin', href: '/super-admin', icon: 'dashboard', label: 'Dashboard', screen: 'platform' },
+  { group: 'admin', href: '/super-admin/tenants', icon: 'apartment', label: 'Tenants', screen: 'platform' },
+  { group: 'admin', href: '/super-admin/system-health', icon: 'monitor_heart', label: 'System Health', screen: 'platform' },
+  { group: 'admin', href: '/super-admin/subscriptions', icon: 'workspace_premium', label: 'Manage Subscription', screen: 'platform' },
+  { group: 'admin', href: '/super-admin/billing', icon: 'payments', label: 'Billing', screen: 'platform' },
+  { group: 'admin', href: '/super-admin/audit-logs', icon: 'manage_search', label: 'Audit Logs', screen: 'platform' },
+  { group: 'admin', href: '/super-admin/settings', icon: 'settings', label: 'Settings', screen: 'platform' },
 ];
 
-export function isKnownRole(role: string): role is UserRole {
-  return Object.values(UserRole).includes(role as UserRole);
+export const viewPermission = (screen: string): string => `${screen}:view`;
+
+export function linksForPermissions(permissions: ReadonlySet<string>, role: string): AppNavLink[] {
+  if (isPlatformRoleKey(role)) {
+    return platformNavLinks;
+  }
+
+  return appNavLinks.filter((link) => permissions.has(viewPermission(link.screen)));
 }
 
-export function canAccessPermissions(role: string, permissions: Permission[]): boolean {
-  if (!isKnownRole(role)) {
+export function canAccessPathWithPermissions(
+  permissions: ReadonlySet<string>,
+  role: string,
+  pathname: string,
+): boolean {
+  const links = isPlatformRoleKey(role) ? platformNavLinks : appNavLinks;
+  // Longest href first so `/staff/roles` resolves before `/staff`.
+  const sorted = [...links].sort((first, second) => second.href.length - first.href.length);
+  const link = sorted.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+
+  if (!link) {
     return false;
   }
 
-  return permissions.length === 0 || permissions.some((permission) => hasPermission(role, permission));
+  return isPlatformRoleKey(role) || permissions.has(viewPermission(link.screen));
 }
 
-function canAccessLink(role: string, link: AppNavLink): boolean {
-  if (!isKnownRole(role)) {
-    return false;
+/**
+ * Permissions for a role without a network call. Used for the first paint and
+ * as the offline fallback; the server's `/auth/session` response is
+ * authoritative and replaces this once it lands.
+ */
+export function fallbackPermissionsForRole(role: string): Set<string> {
+  if (!role) {
+    return new Set<string>();
   }
 
-  if (link.roles && !link.roles.includes(role)) {
-    return false;
-  }
-
-  if (ownerRoles.includes(role)) {
-    return true;
-  }
-
-  return canAccessPermissions(role, link.permissions);
-}
-
-export function linksForRole(role: string): AppNavLink[] {
-  return appNavLinks.filter((link) => canAccessLink(role, link));
-}
-
-export function canAccessPath(role: string, pathname: string): boolean {
-  const sortedLinks = [...appNavLinks].sort((first, second) => second.href.length - first.href.length);
-  const link = sortedLinks.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
-  return link ? canAccessLink(role, link) : false;
+  return expandPermissions(permissionsForBuiltinRole(role));
 }

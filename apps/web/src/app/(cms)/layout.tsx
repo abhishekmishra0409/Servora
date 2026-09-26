@@ -5,16 +5,27 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 
-import { documentId, getCmsTenants } from '../../lib/api-client';
-import { clearCmsSettings, readCmsSettings } from '../../lib/cms-storage';
-import { canAccessPath, linksForRole } from '../../lib/role-access';
+import { CmsSessionProvider, useCmsSession } from '../../components/cms-session-provider';
+import { documentId, getCmsTenants, switchCmsBranch } from '../../lib/api-client';
+import { clearCmsSettings, readCmsSettings, writeCmsSettings } from '../../lib/cms-storage';
+import { canAccessPathWithPermissions, linksForPermissions } from '../../lib/role-access';
 
 export default function CmsLayout({ children }: { children: ReactNode }): ReactNode {
+  return (
+    <CmsSessionProvider>
+      <CmsChrome>{children}</CmsChrome>
+    </CmsSessionProvider>
+  );
+}
+
+function CmsChrome({ children }: { children: ReactNode }): ReactNode {
   const pathname = usePathname();
   const router = useRouter();
+  const session = useCmsSession();
   const [checkedAuth, setCheckedAuth] = useState(false);
-  const [role, setRole] = useState('');
   const [tenantStatus, setTenantStatus] = useState('');
+  const [switching, setSwitching] = useState(false);
+  const role = session.role;
 
   useEffect(() => {
     const settings = readCmsSettings();
@@ -28,7 +39,6 @@ export default function CmsLayout({ children }: { children: ReactNode }): ReactN
       return;
     }
 
-    setRole(settings.role);
     setCheckedAuth(true);
     if (!['super_admin', 'platform_admin'].includes(settings.role) && settings.tenantId && settings.token) {
       void getCmsTenants(settings.token)
@@ -45,6 +55,28 @@ export default function CmsLayout({ children }: { children: ReactNode }): ReactN
     router.replace('/login');
   }
 
+  async function changeBranch(branchId: string): Promise<void> {
+    setSwitching(true);
+    try {
+      const next = await switchCmsBranch(branchId, session.token);
+      // The role can differ per outlet, so the whole session is re-issued.
+      writeCmsSettings(
+        next.branchId ?? '',
+        next.accessToken,
+        next.tenantId,
+        next.refreshToken,
+        next.role,
+        next.userId,
+      );
+      await session.reload();
+      router.refresh();
+    } catch {
+      // Staying on the current outlet is the safe failure mode.
+    } finally {
+      setSwitching(false);
+    }
+  }
+
   if (!checkedAuth) {
     return (
       <main className="page-shell">
@@ -53,12 +85,15 @@ export default function CmsLayout({ children }: { children: ReactNode }): ReactN
     );
   }
 
-  const links = linksForRole(role);
+  const links = linksForPermissions(session.permissions, role);
   const isPlatformRole = ['super_admin', 'platform_admin'].includes(role);
   const subscriptionBlocked = !isPlatformRole && tenantStatus !== '' && tenantStatus !== 'active';
   const subscriptionRecoveryPath = pathname === '/subscription' || pathname === '/settings';
   const showSubscriptionWarning = subscriptionBlocked && pathname !== '/subscription';
-  const allowed = canAccessPath(role, pathname) && (!subscriptionBlocked || subscriptionRecoveryPath);
+  const allowed =
+    canAccessPathWithPermissions(session.permissions, role, pathname) &&
+    (!subscriptionBlocked || subscriptionRecoveryPath);
+  const currentBranch = session.branches.find((branch) => branch.branchId === session.branchId);
 
   return (
     <div className="cms-shell">
@@ -106,12 +141,30 @@ export default function CmsLayout({ children }: { children: ReactNode }): ReactN
               Add New Tenant
             </Link>
           ) : null}
-          <span className="pill">
-            <span aria-hidden="true" className="material-symbols-outlined">
-              {isPlatformRole ? 'shield_person' : 'storefront'}
+          {!isPlatformRole && session.branches.length > 1 ? (
+            <label className="cms-branch-switcher">
+              <span aria-hidden="true" className="material-symbols-outlined">storefront</span>
+              <select
+                aria-label="Switch outlet"
+                disabled={switching}
+                onChange={(event) => void changeBranch(event.target.value)}
+                value={session.branchId}
+              >
+                {session.branches.map((branch) => (
+                  <option key={branch.branchId} value={branch.branchId}>
+                    {branch.name} - {branch.roleKey.replaceAll('_', ' ')}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <span className="pill">
+              <span aria-hidden="true" className="material-symbols-outlined">
+                {isPlatformRole ? 'shield_person' : 'storefront'}
+              </span>
+              {isPlatformRole ? 'Platform' : (currentBranch?.name ?? 'Workspace')}
             </span>
-            {isPlatformRole ? 'Platform' : 'Harbor Grill'}
-          </span>
+          )}
           <div className="cms-sidebar__footer-links">
             <Link href="/login">Switch account</Link>
             <span style={{ color: 'var(--outline-variant)' }}>|</span>

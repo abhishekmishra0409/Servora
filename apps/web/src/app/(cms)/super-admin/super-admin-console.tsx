@@ -1,6 +1,6 @@
 'use client';
 
-import { DEFAULT_TENANT_FEATURES, TENANT_FEATURES } from '@restaurent/shared';
+import { DEFAULT_TENANT_FEATURES, PLAN_FEATURES, TENANT_FEATURES } from '@restaurent/shared';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -231,7 +231,10 @@ export function SuperAdminConsole({ view }: { view: SuperAdminView }) {
           badge: plan.badge ?? '',
           branchLimit: Number(plan.branchLimit ?? 0),
           description: plan.description ?? '',
-          employeeLimit: Number(plan.employeeLimit ?? 0),
+          customRoleLimit: Number(plan.customRoleLimit ?? 0),
+        employeeLimit: Number(plan.employeeLimit ?? 0),
+        features: plan.features ?? [],
+        menuItemLimit: Number(plan.menuItemLimit ?? 0),
           monthlyBillLimit: Number(plan.monthlyBillLimit ?? 0),
           perks: plan.perks ?? [],
           sortOrder: Number(plan.sortOrder ?? 0),
@@ -314,6 +317,27 @@ export function SuperAdminConsole({ view }: { view: SuperAdminView }) {
                     <label><span>Branch limit</span><input min="0" onChange={(event) => updatePlanLocal(plan.code, { branchLimit: Number(event.target.value) })} type="number" value={plan.branchLimit ?? 0} /></label>
                     <label><span>Table limit</span><input min="0" onChange={(event) => updatePlanLocal(plan.code, { tableLimit: Number(event.target.value) })} type="number" value={plan.tableLimit ?? 0} /></label>
                     <label><span>Monthly bill limit</span><input min="0" onChange={(event) => updatePlanLocal(plan.code, { monthlyBillLimit: Number(event.target.value) })} type="number" value={plan.monthlyBillLimit ?? 0} /></label>
+                    <label><span>Menu item limit</span><input min="0" onChange={(event) => updatePlanLocal(plan.code, { menuItemLimit: Number(event.target.value) })} type="number" value={plan.menuItemLimit ?? 0} /></label>
+                    <label><span>Custom role limit</span><input min="0" onChange={(event) => updatePlanLocal(plan.code, { customRoleLimit: Number(event.target.value) })} type="number" value={plan.customRoleLimit ?? 0} /></label>
+                  </div>
+                  <p className="muted">0 means unlimited. Capabilities below gate whole features regardless of the counts.</p>
+                  <div className="cms-permission-grid">
+                    {PLAN_FEATURES.map((feature) => (
+                      <label className="checkbox-row" key={feature.key}>
+                        <input
+                          checked={(plan.features ?? []).includes(feature.key)}
+                          onChange={(event) =>
+                            updatePlanLocal(plan.code, {
+                              features: event.target.checked
+                                ? [...(plan.features ?? []), feature.key]
+                                : (plan.features ?? []).filter((item) => item !== feature.key),
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        {feature.label}
+                      </label>
+                    ))}
                   </div>
                   <label><span>Owner-facing perks</span><textarea onChange={(event) => updatePlanLocal(plan.code, { perks: event.target.value.split('\n').map((item) => item.trim()).filter(Boolean) })} value={(plan.perks ?? []).join('\n')} /></label>
                   <div className="action-row">

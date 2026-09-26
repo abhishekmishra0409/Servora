@@ -13,6 +13,7 @@ import {
 import { readCmsSettings } from '../../../lib/cms-storage';
 import { formatOrderNumber } from '../../../lib/order-number';
 import { createSocketClient } from '../../../lib/socket';
+import { useCmsSession } from '../../../components/cms-session-provider';
 
 const statuses = ['pending_confirmation', 'accepted', 'preparing', 'ready'];
 
@@ -20,9 +21,9 @@ const money = (value: number): string =>
   new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
 
 export default function OrdersPage() {
+  const { can } = useCmsSession();
   const [branchId, setBranchId] = useState('');
   const [token, setToken] = useState('');
-  const [role, setRole] = useState('');
   const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('Sign in to load live orders from the database.');
@@ -30,7 +31,6 @@ export default function OrdersPage() {
   useEffect(() => {
     const settings = readCmsSettings();
     setBranchId(settings.branchId);
-    setRole(settings.role);
     setToken(settings.token);
     if (settings.branchId && settings.token) {
       void load(settings.branchId, settings.token);
@@ -88,9 +88,9 @@ export default function OrdersPage() {
     }
   }
 
-  const canConfirmOrders = ['platform_admin', 'owner', 'manager', 'waiter'].includes(role);
-  const canMoveKitchenStatus = ['platform_admin', 'owner', 'manager'].includes(role);
-  const canMarkServed = ['platform_admin', 'owner', 'manager', 'waiter'].includes(role);
+  const canConfirmOrders = can('orders:confirm');
+  const canMoveKitchenStatus = can('orders:status-preparing', 'orders:status-ready');
+  const canMarkServed = can('orders:status-served');
 
   return (
     <main>

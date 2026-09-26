@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { loginStaff } from '../../lib/api-client';
-import { writeCmsSettings } from '../../lib/cms-storage';
+import { writeCmsPermissions, writeCmsSettings } from '../../lib/cms-storage';
 
 const staffRoles = ['Owner', 'Manager', 'Waiter', 'Kitchen', 'Cashier'];
 
@@ -42,6 +42,8 @@ export default function StaffLoginPage() {
         session.role,
         session.userId,
       );
+      // Seed the permission cache so the CMS sidebar is right on first paint.
+      writeCmsPermissions(session.permissions ?? []);
       setMessageTone('success');
       setMessage('Signed in.');
       router.push(platformRole ? '/super-admin' : '/dashboard');

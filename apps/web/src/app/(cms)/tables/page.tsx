@@ -20,15 +20,16 @@ import {
 import { readCmsSettings } from '../../../lib/cms-storage';
 import { resolveCustomerOrigin } from '../../../lib/customer-origin';
 import { createSocketClient } from '../../../lib/socket';
+import { useCmsSession } from '../../../components/cms-session-provider';
 
 export default function TablesPage() {
+  const { can } = useCmsSession();
   const [branch, setBranch] = useState<CmsBranch | null>(null);
   const [branchId, setBranchId] = useState('');
   const [customerOrigin, setCustomerOrigin] = useState(resolveCustomerOrigin);
   const [editingId, setEditingId] = useState('');
   const [form, setForm] = useState({ capacity: '4', floorId: '', tableNo: '' });
   const [qrImages, setQrImages] = useState<Record<string, string>>({});
-  const [role, setRole] = useState('');
   const [tables, setTables] = useState<CmsTable[]>([]);
   const [message, setMessage] = useState('Sign in to load tables from the database.');
   const [tenant, setTenant] = useState<CmsTenant | null>(null);
@@ -104,7 +105,6 @@ export default function TablesPage() {
     const origin = resolveCustomerOrigin();
     setBranchId(settings.branchId);
     setCustomerOrigin(origin);
-    setRole(settings.role);
     setTenantId(settings.tenantId);
     setToken(settings.token);
     void load(settings.tenantId, settings.branchId, settings.token, origin);
@@ -191,7 +191,7 @@ export default function TablesPage() {
     }
   }
 
-  const canManageTables = ['platform_admin', 'owner', 'manager'].includes(role);
+  const canManageTables = can('tables:add', 'tables:edit', 'tables:delete');
 
   return (
     <PageShell eyebrow="Tables" title="Table and floor operations" description="Color-coded table status, active session snapshots, waiter attention, and bill actions mapped to real branch flow.">

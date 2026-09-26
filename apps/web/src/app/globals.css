@@ -4340,3 +4340,220 @@ main {
     transform: translateX(-50%);
   }
 }
+
+/* --- Role builder: screen x action permission matrix ------------------- */
+
+.perm-matrix { border: 1px solid var(--outline-variant); border-radius: 12px; overflow: hidden; }
+
+.perm-matrix__group-head {
+  align-items: center;
+  background: var(--surface-container-high);
+  border-bottom: 1px solid var(--outline-variant);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+.perm-matrix__group-head h3 {
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  margin: 0;
+  text-transform: uppercase;
+}
+.perm-matrix__group-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.perm-matrix__head,
+.perm-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(170px, 1.6fr) repeat(4, minmax(56px, 76px));
+  padding: 10px 14px;
+}
+.perm-matrix__head {
+  background: var(--surface-container-lowest);
+  border-bottom: 1px solid var(--outline-variant);
+  color: var(--on-surface-variant);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.perm-matrix__head > span:first-child { text-align: left; }
+
+.perm-row { background: #ffffff; border-bottom: 1px solid var(--surface-container-high); }
+.perm-row:last-child { border-bottom: 0; }
+.perm-row__screen { display: grid; gap: 2px; }
+.perm-row__screen small { font-size: 0.74rem; }
+/* Lets the four cells be grid children on desktop and flex chips on phones. */
+.perm-row__actions { display: contents; }
+
+.perm-cell { align-items: center; display: flex; gap: 8px; justify-content: center; margin: 0; }
+.perm-cell--na { color: var(--outline-variant); }
+.perm-cell__label {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.perm-row__advanced { grid-column: 1 / -1; }
+.perm-row__advanced .button-link { padding-left: 0; }
+.perm-advanced { margin: 8px 0 2px; }
+
+.role-preset-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.role-preset {
+  align-items: flex-start;
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  color: var(--on-surface);
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  padding: 14px;
+  text-align: left;
+}
+.role-preset--active { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(141, 75, 0, 0.12); }
+.role-preset small { color: var(--on-surface-variant); font-weight: 600; }
+
+.role-step { border-top: 1px solid var(--outline-variant); margin-top: 18px; padding-top: 16px; }
+.role-step:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.role-step__head { align-items: center; display: flex; gap: 10px; margin-bottom: 10px; }
+.role-step__head h3 { margin: 0; }
+.role-step__num {
+  align-items: center;
+  background: var(--primary);
+  border-radius: 999px;
+  color: #ffffff;
+  display: flex;
+  font-weight: 800;
+  height: 26px;
+  justify-content: center;
+  width: 26px;
+}
+.role-matrix-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 12px 0;
+}
+.role-summary { display: grid; gap: 8px; list-style: none; margin: 0 0 14px; padding: 0; }
+.role-summary li { align-items: flex-start; display: flex; gap: 8px; }
+.role-summary .material-symbols-outlined { color: var(--primary); font-size: 20px; }
+
+/* Row overrides: the base .cms-data-row template is a shared 5-column rule. */
+.roles-row { grid-template-columns: minmax(160px, 1.4fr) 110px minmax(110px, 0.7fr) minmax(90px, 0.6fr) auto; }
+.staff-row { grid-template-columns: minmax(170px, 1.4fr) minmax(180px, 1.6fr) minmax(90px, 0.6fr) auto; }
+
+.staff-access-list { display: grid; gap: 10px; }
+.staff-access-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.cms-branch-switcher { align-items: center; display: flex; gap: 8px; width: 100%; }
+.cms-branch-switcher select { min-height: 38px; }
+
+/* --- Plan usage and limits -------------------------------------------- */
+
+.usage-meter__bar {
+  background: var(--surface-container-high);
+  border-radius: 999px;
+  display: block;
+  height: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+  width: 100%;
+}
+.usage-meter__bar > span { background: var(--primary); display: block; height: 100%; }
+.usage-meter--warn .usage-meter__bar > span { background: #b26a00; }
+.usage-meter--blocked .usage-meter__bar > span { background: var(--danger); }
+
+.usage-strip {
+  align-items: center;
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+}
+.usage-strip--blocked { border-color: var(--danger); }
+.limit-block { border-left: 4px solid var(--danger); }
+
+@media (max-width: 760px) {
+  .perm-matrix__head { display: none; }
+  .perm-row { grid-template-columns: 1fr; }
+  .perm-row__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .perm-cell {
+    border: 1px solid var(--outline-variant);
+    border-radius: 999px;
+    justify-content: flex-start;
+    padding: 8px 12px;
+  }
+  .perm-cell--na { display: none; }
+  .perm-cell__label {
+    clip-path: none;
+    height: auto;
+    position: static;
+    white-space: normal;
+    width: auto;
+  }
+  .roles-row,
+  .staff-row,
+  .staff-access-row { grid-template-columns: 1fr; }
+}
+
+/* `.button-link` is a filled accent button in this codebase, so inline actions
+   inside the role builder need a genuinely quiet, text-weight treatment. */
+.button-quiet {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--primary);
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 700;
+  gap: 4px;
+  min-height: 32px;
+  padding: 4px 8px;
+}
+.button-quiet:hover:not(:disabled) { background: var(--surface-container-high); }
+.button-quiet .material-symbols-outlined { font-size: 18px; }
+.button-quiet--danger { color: var(--danger); }
+
+/* Name above description, rather than running together on one line. */
+.roles-row > div:first-child,
+.cms-data-row > div:first-child { display: grid; gap: 2px; }
+.roles-row > div:first-child small { line-height: 1.3; }
+
+/* Bare inputs are globally full-width in this app, which squeezed the action
+   chips until their labels clipped to "Vi" / "Ed". Pin the checkbox size so the
+   label keeps its room. */
+.perm-cell input[type="checkbox"],
+.perm-row__screen input[type="checkbox"] {
+  flex: none;
+  height: 18px;
+  margin: 0;
+  min-height: 0;
+  width: 18px;
+}
+.perm-cell__label { white-space: nowrap; }
+
+@media (max-width: 760px) {
+  /* Two chips per row read better than three squeezed ones. */
+  .perm-cell { flex: 1 1 calc(50% - 8px); }
+}

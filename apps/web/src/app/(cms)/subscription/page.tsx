@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 
 import { PageShell } from '../../../components/page-shell';
+import { UsageMeter } from '../../../components/plan-limit-notice';
+import { useCmsSession } from '../../../components/cms-session-provider';
 import {
   createBillingCheckoutSession,
   createBillingCustomerPortal,
@@ -11,6 +13,15 @@ import {
   type CmsSubscriptionPlan,
 } from '../../../lib/api-client';
 import { readCmsSettings } from '../../../lib/cms-storage';
+
+const USAGE_ROWS: [string, string][] = [
+  ['employees', 'Staff accounts'],
+  ['branches', 'Outlets'],
+  ['tables', 'Tables'],
+  ['monthlyBills', 'Bills this month'],
+  ['menuItems', 'Menu items'],
+  ['customRoles', 'Custom roles'],
+];
 
 const money = (value: number): string =>
   new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
@@ -21,6 +32,7 @@ const formatLimit = (value?: number, label = ''): string => {
 };
 
 export default function SubscriptionPage() {
+  const { entitlements } = useCmsSession();
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<CmsBillingSummary | null>(null);
   const [message, setMessage] = useState('Sign in to load subscription data from the database.');
@@ -85,6 +97,28 @@ export default function SubscriptionPage() {
         </section>
       ) : null}
       {message ? <p className="notice-text">{message}</p> : null}
+
+      {entitlements ? (
+        <section className="panel">
+          <div className="cms-section-head">
+            <h2>Your usage</h2>
+            <span className="pill">{entitlements.planName}</span>
+          </div>
+          <p className="muted">
+            Existing records always keep working. When a limit is reached, only new ones are blocked.
+          </p>
+          <div className="card-grid">
+            {USAGE_ROWS.map(([key, label]) => (
+              <UsageMeter
+                cap={entitlements.limits[key] ?? 0}
+                key={key}
+                label={label}
+                used={entitlements.usage[key] ?? 0}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
       <section className="cms-settings-grid">
         <article className="panel">
           <span className="pill">{currentStatus}</span>

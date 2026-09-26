@@ -6,18 +6,18 @@ import { ChangePasswordForm } from '../../../components/change-password-form';
 import { PageShell } from '../../../components/page-shell';
 import { documentId, getCmsBranches, getCmsTenants, updateCmsBranch, type CmsBranch, type CmsTenant } from '../../../lib/api-client';
 import { readCmsSettings } from '../../../lib/cms-storage';
+import { useCmsSession } from '../../../components/cms-session-provider';
 
 export default function SettingsPage() {
+  const { can } = useCmsSession();
   const [branchForm, setBranchForm] = useState({ addressLine1: '', city: '', hours: '', name: '', serviceMode: 'waiter_confirmed' });
   const [tenant, setTenant] = useState<CmsTenant | null>(null);
   const [branch, setBranch] = useState<CmsBranch | null>(null);
   const [message, setMessage] = useState('Sign in to load settings from the database.');
-  const [role, setRole] = useState('');
   const [token, setToken] = useState('');
 
   useEffect(() => {
     const settings = readCmsSettings();
-    setRole(settings.role);
     setToken(settings.token);
     if (!settings.tenantId || !settings.branchId || !settings.token) return;
     void Promise.all([getCmsTenants(settings.token), getCmsBranches(settings.tenantId, settings.token)])
@@ -64,7 +64,7 @@ export default function SettingsPage() {
     }
   }
 
-  const canManageBranchSettings = ['owner', 'manager'].includes(role);
+  const canManageBranchSettings = can('settings:edit');
 
   return (
     <PageShell eyebrow="Settings" title="Account and workspace settings" description="Manage your login security and workspace defaults available to your role.">
