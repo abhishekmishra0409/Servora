@@ -5,7 +5,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { StaffJwtGuard } from '../../common/guards/staff-jwt.guard';
 import type { StaffJwtPayload, StaffSession } from '@restaurent/shared';
 import { AuthService } from './auth.service';
-import { ChangePasswordDto, LoginDto, RefreshDto } from './dto';
+import { ChangePasswordDto, LoginDto, RefreshDto, SwitchBranchDto } from './dto';
 
 @Controller('auth')
 export class AuthController {
@@ -45,5 +45,21 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: StaffJwtPayload): Promise<{ email: string; id: string; name: string }> {
     return this.authService.getMe(user.sub);
+  }
+
+  /** Drives the CMS nav, the outlet switcher, and the plan usage meters. */
+  @UseGuards(StaffJwtGuard)
+  @Get('session')
+  session(@CurrentUser() user: StaffJwtPayload): Promise<unknown> {
+    return this.authService.getSessionContext(user);
+  }
+
+  @UseGuards(StaffJwtGuard)
+  @Post('switch-branch')
+  switchBranch(
+    @Body() dto: SwitchBranchDto,
+    @CurrentUser() user: StaffJwtPayload,
+  ): Promise<StaffSession> {
+    return this.authService.switchBranch(user, dto.branchId);
   }
 }

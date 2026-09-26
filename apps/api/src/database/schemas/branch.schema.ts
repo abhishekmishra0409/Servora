@@ -25,6 +25,15 @@ export class Branch {
 
   @Prop({ type: Object, default: {} })
   hours!: Record<string, unknown>;
+
+  /**
+   * 'active' | 'archived'. Outlets are archived, never hard-deleted: orders,
+   * payments, tables, floors, menus and memberships all carry a branchId, so a
+   * hard delete would orphan them. Archived outlets stop counting toward the
+   * plan's outlet limit.
+   */
+  @Prop({ default: 'active' })
+  status!: string;
 }
 
 export const BranchSchema = SchemaFactory.createForClass(Branch);

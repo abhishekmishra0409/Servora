@@ -27,3 +27,8 @@ export class ChangePasswordDto {
   @MinLength(8)
   newPassword!: string;
 }
+
+export class SwitchBranchDto {
+  @IsString()
+  branchId!: string;
+}

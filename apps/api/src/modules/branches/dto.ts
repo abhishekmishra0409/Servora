@@ -18,3 +18,23 @@ export class UpdateBranchDto {
   @IsObject()
   hours?: Record<string, unknown>;
 }
+
+export class CreateBranchDto {
+  @IsString()
+  name!: string;
+
+  @IsString()
+  tenantId!: string;
+
+  @IsOptional()
+  @IsEnum(BranchServiceMode)
+  serviceMode?: BranchServiceMode;
+
+  @IsOptional()
+  @IsObject()
+  address?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsObject()
+  hours?: Record<string, unknown>;
+}

@@ -49,7 +49,14 @@ const createService = (overrides?: {
 
   return {
     membershipModel,
-    service: new StaffService(membershipModel as any, userModel as any, {} as any, {} as any),
+    service: new StaffService(
+      membershipModel as any,
+      userModel as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    ),
     userModel,
   };
 };

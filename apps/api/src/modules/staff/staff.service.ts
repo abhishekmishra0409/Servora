@@ -7,7 +7,9 @@ import { Membership } from '../../database/schemas/membership.schema';
 import { User } from '../../database/schemas/user.schema';
 import { hashValue } from '../../common/utils/hash';
 import { AuditService } from '../../infrastructure/audit/audit.service';
-import { BillingService } from '../billing/billing.service';
+import { EntitlementsService } from '../../infrastructure/entitlements/entitlements.service';
+import { PermissionResolverService } from '../../infrastructure/access/permission-resolver.service';
+import { RolesService } from '../roles/roles.service';
 import { CreateStaffDto, UpdateStaffDto } from './dto';
 
 @Injectable()
@@ -16,7 +18,9 @@ export class StaffService {
     @InjectModel(Membership.name) private readonly membershipModel: Model<Membership>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly auditService: AuditService,
-    private readonly billingService: BillingService,
+    private readonly entitlements: EntitlementsService,
+    private readonly rolesService: RolesService,
+    private readonly permissionResolver: PermissionResolverService,
   ) {}
 
   async list(branchId: string, tenantId: string, actor: StaffJwtPayload): Promise<unknown[]> {
@@ -52,6 +56,7 @@ export class StaffService {
 
   async create(dto: CreateStaffDto, actor: StaffJwtPayload): Promise<unknown> {
     this.assertCanAssignRole(dto.role, actor.role);
+    await this.assertRoleExists(dto.tenantId, dto.role);
 
     const normalizedEmail = dto.email.toLowerCase();
     const existingUser = await this.userModel.findOne({ email: normalizedEmail }).select('_id').lean().exec();
@@ -61,7 +66,7 @@ export class StaffService {
           .exec()
       : null;
     if (!existingMembership) {
-      await this.assertEmployeeLimit(dto.tenantId);
+      await this.entitlements.assertCanCreate(dto.tenantId, 'employees');
     }
 
     const user = await this.userModel.findOneAndUpdate(
@@ -114,8 +119,10 @@ export class StaffService {
 
     if (dto.role) {
       this.assertCanAssignRole(dto.role, actor.role);
+      await this.assertRoleExists(membership.tenantId, dto.role);
       membership.role = dto.role;
       await membership.save();
+      this.permissionResolver.invalidateUser(membership.userId, membership.tenantId);
     }
 
     const user = await this.userModel.findById(membership.userId).exec();
@@ -166,11 +173,11 @@ export class StaffService {
     return { success: true };
   }
 
-  private platformRoles(): UserRole[] {
+  private platformRoles(): string[] {
     return [UserRole.SuperAdmin, UserRole.PlatformAdmin];
   }
 
-  private isPlatformRole(role: UserRole): boolean {
+  private isPlatformRole(role: string): boolean {
     return this.platformRoles().includes(role);
   }
 
@@ -180,22 +187,25 @@ export class StaffService {
     }
   }
 
-  private assertCanAssignRole(targetRole: UserRole, actorRole: UserRole): void {
+  private assertCanAssignRole(targetRole: string, actorRole: string): void {
     if (this.isPlatformRole(targetRole) && actorRole !== UserRole.SuperAdmin) {
       throw new ForbiddenException('Only a super admin can assign platform roles');
     }
   }
 
-  private async assertEmployeeLimit(tenantId: string): Promise<void> {
-    const plan = await this.billingService.getTenantBillingPlan(tenantId);
-    const employeeLimit = Number(plan?.employeeLimit ?? 0);
-    if (!employeeLimit) {
+  /**
+   * A membership may only reference a built-in role or one this tenant defined.
+   * `Membership.role` is no longer a schema enum, so this is the validation.
+   */
+  private async assertRoleExists(tenantId: string, role: string): Promise<void> {
+    if (this.isPlatformRole(role)) {
       return;
     }
 
-    const employeeCount = await this.membershipModel.countDocuments({ tenantId }).exec();
-    if (employeeCount >= employeeLimit) {
-      throw new ForbiddenException(`Your subscription allows up to ${employeeLimit} employee accounts.`);
+    const assignable = await this.rolesService.assignableRoleKeys(tenantId);
+
+    if (!assignable.has(role)) {
+      throw new NotFoundException(`Unknown role "${role}" for this restaurant.`);
     }
   }
 }
