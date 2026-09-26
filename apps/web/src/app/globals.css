@@ -4557,3 +4557,76 @@ main {
   /* Two chips per row read better than three squeezed ones. */
   .perm-cell { flex: 1 1 calc(50% - 8px); }
 }
+
+/* --- QR print sheet ---------------------------------------------------- */
+
+.qr-sheet {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 16px;
+}
+.qr-sheet--1 { grid-template-columns: minmax(0, 1fr); }
+.qr-sheet--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.qr-sheet--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.qr-card {
+  background: #ffffff;
+  border: 1px solid var(--outline-variant);
+  border-radius: 12px;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  padding: 20px 16px;
+  text-align: center;
+}
+.qr-card__brand { color: var(--on-surface-variant); font-weight: 800; letter-spacing: 0.06em; margin: 0; text-transform: uppercase; }
+.qr-card__outlet { color: var(--on-surface-variant); font-size: 0.85rem; margin: 0; }
+.qr-card__table { font-size: 1.6rem; margin: 4px 0 8px; }
+.qr-card__code { height: auto; max-width: 100%; width: 260px; }
+.qr-card__cta { font-weight: 700; margin: 8px 0 0; }
+.qr-card__url { color: var(--on-surface-variant); font-size: 0.7rem; margin: 2px 0 0; word-break: break-all; }
+
+@media (max-width: 760px) {
+  .qr-sheet--2,
+  .qr-sheet--3 { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media print {
+  /* Strip the app chrome so the paper holds only the codes. */
+  .cms-sidebar,
+  .hero,
+  .qr-print-controls,
+  .subscription-warning,
+  .notice-text { display: none !important; }
+
+  .cms-shell,
+  .cms-content { display: block; margin: 0; padding: 0; }
+  .page-shell { margin: 0; max-width: none; padding: 0; }
+  body { background: #ffffff; }
+
+  .qr-sheet { gap: 0; margin: 0; }
+  .qr-card {
+    border: 0;
+    /* Keep a code and its table number on the same sheet. */
+    break-inside: avoid;
+    page-break-inside: avoid;
+    padding: 24px 12px;
+  }
+  .qr-sheet--1 .qr-card { break-after: page; page-break-after: page; height: 100vh; }
+  .qr-card__code { width: 62%; }
+
+  @page { margin: 12mm; }
+}
+
+/* `.toolbar` is a grid, so a lone button stretched the full content width on
+   every CMS page. Size toolbar actions to their content instead. The public
+   landing page keeps the stretched layout it was designed around. */
+.cms-content .toolbar {
+  grid-auto-flow: column;
+  justify-content: start;
+  justify-items: start;
+}
+@media (max-width: 760px) {
+  .cms-content .toolbar { grid-auto-flow: row; }
+}

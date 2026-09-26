@@ -1,142 +1,65 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import QRCode from 'qrcode';
+import Link from 'next/link';
 
 import { PageShell } from '../../../components/page-shell';
+import { PlanLimitNotice, UsageStrip } from '../../../components/plan-limit-notice';
+import { useCmsSession } from '../../../components/cms-session-provider';
 import {
+  ApiError,
   createCmsTable,
   deleteCmsTable,
   documentId,
-  getCmsBranches,
-  getCmsTables,
-  getCmsTenants,
-  regenerateCmsQr,
   updateCmsTable,
-  type CmsBranch,
   type CmsTable,
-  type CmsTenant,
 } from '../../../lib/api-client';
-import { readCmsSettings } from '../../../lib/cms-storage';
-import { resolveCustomerOrigin } from '../../../lib/customer-origin';
+import { isLocalhostOrigin } from '../../../lib/customer-origin';
 import { createSocketClient } from '../../../lib/socket';
-import { useCmsSession } from '../../../components/cms-session-provider';
+import { useTableQr } from '../../../lib/use-table-qr';
 
 export default function TablesPage() {
-  const { can } = useCmsSession();
-  const [branch, setBranch] = useState<CmsBranch | null>(null);
-  const [branchId, setBranchId] = useState('');
-  const [customerOrigin, setCustomerOrigin] = useState(resolveCustomerOrigin);
+  const session = useCmsSession();
+  const qr = useTableQr({ width: 220 });
   const [editingId, setEditingId] = useState('');
   const [form, setForm] = useState({ capacity: '4', floorId: '', tableNo: '' });
-  const [qrImages, setQrImages] = useState<Record<string, string>>({});
-  const [tables, setTables] = useState<CmsTable[]>([]);
-  const [message, setMessage] = useState('Sign in to load tables from the database.');
-  const [tenant, setTenant] = useState<CmsTenant | null>(null);
-  const [tenantId, setTenantId] = useState('');
-  const [token, setToken] = useState('');
+  const [limitError, setLimitError] = useState<ApiError | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState('');
 
-  function customerUrl(qrToken?: string | null): string {
-    if (!qrToken || !tenant || !branch) return '';
-    return `${customerOrigin.replace(/\/$/, '')}/r/${tenant.slug}/${branch.slug}/t/${qrToken}`;
-  }
+  const { branchId, tenantId, token } = session;
+  const canAdd = session.can('tables:add');
+  const canEdit = session.can('tables:edit');
+  const canDelete = session.can('tables:delete');
+  const canRegenerate = session.can('tables:regenerate-qr', 'qr:regenerate');
+  const canPrint = session.can('qr:view');
 
-  async function renderQrImages(
-    nextTables: CmsTable[],
-    nextTenant = tenant,
-    nextBranch = branch,
-    nextOrigin = customerOrigin,
-  ): Promise<void> {
-    if (!nextTenant || !nextBranch) {
-      setQrImages({});
-      return;
-    }
-
-    const images = await Promise.all(
-      nextTables.map(async (table) => {
-        const qrToken = table.qrToken ?? '';
-        const url = qrToken ? `${nextOrigin.replace(/\/$/, '')}/r/${nextTenant.slug}/${nextBranch.slug}/t/${qrToken}` : '';
-        const dataUrl = url
-          ? await QRCode.toDataURL(url, {
-            color: { dark: '#111c2d', light: '#ffffff' },
-            errorCorrectionLevel: 'M',
-            margin: 2,
-            width: 220,
-          })
-          : '';
-        return [documentId(table), dataUrl] as const;
-      }),
-    );
-    setQrImages(Object.fromEntries(images));
-  }
-
-  async function load(
-    nextTenantId = tenantId,
-    nextBranchId = branchId,
-    nextToken = token,
-    nextOrigin = customerOrigin,
-  ): Promise<void> {
-    if (!nextTenantId || !nextBranchId || !nextToken) {
-      setMessage('Sign in to manage tables.');
-      return;
-    }
-    try {
-      const [nextTenants, nextBranches, nextTables] = await Promise.all([
-        getCmsTenants(nextToken),
-        getCmsBranches(nextTenantId, nextToken),
-        getCmsTables(nextBranchId, nextToken),
-      ]);
-      const nextTenant = nextTenants.find((item) => documentId(item) === nextTenantId) ?? nextTenants[0] ?? null;
-      const nextBranch = nextBranches.find((item) => documentId(item) === nextBranchId) ?? nextBranches[0] ?? null;
-      setTenant(nextTenant);
-      setBranch(nextBranch);
-      setTables(nextTables);
-      await renderQrImages(nextTables, nextTenant, nextBranch, nextOrigin);
-      const defaultFloorId = nextTables.find((table) => table.floorId)?.floorId ?? '';
-      setForm((current) => ({ ...current, floorId: current.floorId || defaultFloorId }));
-      setMessage(nextTables.length ? '' : 'No tables found for this branch.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not load tables.');
-    }
-  }
+  // Seed the floor picker from whatever floor the existing tables sit on.
+  useEffect(() => {
+    setForm((current) => ({
+      ...current,
+      floorId: current.floorId || (qr.tables.find((table) => table.floorId)?.floorId ?? ''),
+    }));
+  }, [qr.tables]);
 
   useEffect(() => {
-    const settings = readCmsSettings();
-    const origin = resolveCustomerOrigin();
-    setBranchId(settings.branchId);
-    setCustomerOrigin(origin);
-    setTenantId(settings.tenantId);
-    setToken(settings.token);
-    void load(settings.tenantId, settings.branchId, settings.token, origin);
-    const socket = settings.token ? createSocketClient(settings.token) : null;
-    socket?.on('table.status_changed', (payload?: { status?: string; tableId?: string }) => {
-      if (!payload?.tableId || !payload.status) {
-        return;
-      }
-      const nextStatus = payload.status;
-      const tableId = payload.tableId;
-      setTables((currentTables) =>
-        currentTables.map((table) =>
-          documentId(table) === tableId ? { ...table, status: nextStatus } : table,
-        ),
-      );
-    });
+    const socket = token ? createSocketClient(token) : null;
+
+    socket?.on('table.status_changed', () => void qr.reload());
     ['floor.changed', 'order.created', 'order.status_updated', 'payment.status_updated'].forEach((event) => {
-      socket?.on(event, () => void load(settings.tenantId, settings.branchId, settings.token, origin));
+      socket?.on(event, () => void qr.reload());
     });
     socket?.connect();
+
     return () => {
       socket?.disconnect();
     };
-  }, []);
-
-  useEffect(() => {
-    void renderQrImages(tables);
-  }, [customerOrigin, tenant, branch]);
+    // Re-subscribe only when the session token changes; qr.reload is stable.
+  }, [token]);
 
   function resetForm(): void {
     setEditingId('');
-    setForm({ capacity: '4', floorId: tables.find((table) => table.floorId)?.floorId ?? '', tableNo: '' });
+    setForm({ capacity: '4', floorId: qr.tables.find((table) => table.floorId)?.floorId ?? '', tableNo: '' });
+    setLimitError(null);
   }
 
   function edit(table: CmsTable): void {
@@ -145,87 +68,150 @@ export default function TablesPage() {
   }
 
   async function submit(): Promise<void> {
-    if (!canManageTables) {
-      setMessage('Your role can view tables but cannot change table setup.');
-      return;
-    }
     if (!tenantId || !branchId || !token || !form.floorId || !form.tableNo.trim()) {
-      setMessage('Tenant, branch, floor, table number, and login token are required.');
+      qr.setMessage('Outlet, floor, table number, and a signed-in session are all required.');
       return;
     }
+
+    setLimitError(null);
+
     try {
       if (editingId) {
-        await updateCmsTable(editingId, { capacity: Number(form.capacity), floorId: form.floorId, tableNo: form.tableNo }, token);
+        await updateCmsTable(
+          editingId,
+          { capacity: Number(form.capacity), floorId: form.floorId, tableNo: form.tableNo },
+          token,
+        );
       } else {
         await createCmsTable(
-          { branchId, capacity: Number(form.capacity), floorId: form.floorId, tableNo: form.tableNo.trim(), tenantId },
+          {
+            branchId,
+            capacity: Number(form.capacity),
+            floorId: form.floorId,
+            tableNo: form.tableNo.trim(),
+            tenantId,
+          },
           token,
         );
       }
+
       resetForm();
-      await load();
+      await qr.reload();
+      await session.refreshEntitlements();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not save table.');
+      if (error instanceof ApiError && error.code === 'PLAN_LIMIT_REACHED') {
+        setLimitError(error);
+        qr.setMessage('');
+      } else {
+        qr.setMessage(error instanceof Error ? error.message : 'Could not save the table.');
+      }
     }
   }
 
   async function remove(table: CmsTable): Promise<void> {
-    if (!canManageTables) return;
     if (!token) return;
+
     try {
       await deleteCmsTable(documentId(table), token);
-      await load();
+      setConfirmDeleteId('');
+      await qr.reload();
+      await session.refreshEntitlements();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not delete table.');
+      qr.setMessage(error instanceof Error ? error.message : 'Could not delete the table.');
     }
   }
 
-  async function regenerate(table: CmsTable): Promise<void> {
-    if (!canManageTables) return;
-    if (!token) return;
-    try {
-      await regenerateCmsQr(documentId(table), token);
-      await load();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not regenerate QR.');
-    }
-  }
-
-  const canManageTables = can('tables:add', 'tables:edit', 'tables:delete');
+  const cap = session.entitlements?.limits.tables ?? 0;
+  const used = session.entitlements?.usage.tables ?? qr.tables.length;
+  const atCap = cap > 0 && used >= cap;
 
   return (
-    <PageShell eyebrow="Tables" title="Table and floor operations" description="Color-coded table status, active session snapshots, waiter attention, and bill actions mapped to real branch flow.">
-      {message ? <p className="notice-text">{message}</p> : null}
-      {canManageTables ? (
+    <PageShell
+      description="Tables, their live status, and the customer QR code each one carries."
+      eyebrow="Tables"
+      title="Table and QR operations"
+      toolbar={
+        canPrint ? (
+          <Link className="button-secondary" href="/qr">
+            <span aria-hidden="true" className="material-symbols-outlined">print</span>
+            Print QR codes
+          </Link>
+        ) : null
+      }
+    >
+      {qr.message ? <p className="notice-text">{qr.message}</p> : null}
+      <PlanLimitNotice error={limitError} resource="tables" />
+
+      <UsageStrip cap={cap} label="Tables" used={used} />
+
+      {canAdd || canEdit ? (
         <section className="cms-settings-grid">
           <article className="panel">
             <div className="cms-section-head">
               <h2>{editingId ? 'Update table' : 'Add table'}</h2>
-              {editingId ? <button className="button-secondary" onClick={resetForm} type="button">Cancel</button> : null}
+              {editingId ? (
+                <button className="button-secondary" onClick={resetForm} type="button">Cancel</button>
+              ) : null}
             </div>
             <div className="form-stack">
-              <label>Table number<input value={form.tableNo} onChange={(event) => setForm({ ...form, tableNo: event.target.value })} /></label>
-              <label>Capacity<input min="1" type="number" value={form.capacity} onChange={(event) => setForm({ ...form, capacity: event.target.value })} /></label>
-              <label>Floor ID<input value={form.floorId} onChange={(event) => setForm({ ...form, floorId: event.target.value })} /></label>
-              <button onClick={() => void submit()} type="button">{editingId ? 'Update table' : 'Create table'}</button>
+              <label>
+                Table number
+                <input onChange={(event) => setForm({ ...form, tableNo: event.target.value })} value={form.tableNo} />
+              </label>
+              <label>
+                Capacity
+                <input
+                  min="1"
+                  onChange={(event) => setForm({ ...form, capacity: event.target.value })}
+                  type="number"
+                  value={form.capacity}
+                />
+              </label>
+              <label>
+                Floor ID
+                <input onChange={(event) => setForm({ ...form, floorId: event.target.value })} value={form.floorId} />
+              </label>
+              <button
+                disabled={!editingId && atCap}
+                onClick={() => void submit()}
+                title={!editingId && atCap ? 'Your plan’s table limit is reached' : undefined}
+                type="button"
+              >
+                {editingId ? 'Update table' : 'Create table'}
+              </button>
             </div>
           </article>
+
           <article className="panel">
-            <div className="cms-section-head"><h2>QR lifecycle</h2></div>
+            <div className="cms-section-head"><h2>Customer QR link</h2></div>
             <div className="form-stack">
               <label>
                 Customer app origin
-                <input value={customerOrigin} onChange={(event) => setCustomerOrigin(event.target.value)} />
+                <input
+                  onChange={(event) => qr.setCustomerOrigin(event.target.value)}
+                  value={qr.customerOrigin}
+                />
               </label>
-              <p className="muted">Every table keeps its own QR token. Regenerate it when a printed code is compromised or a table is reissued.</p>
+              {isLocalhostOrigin(qr.customerOrigin) ? (
+                <p className="notice-text">
+                  This origin is <strong>localhost</strong>, so these codes only work on this computer.
+                  Open the CMS from your real domain before printing.
+                </p>
+              ) : null}
+              <p className="muted">
+                Each code encodes the full table URL above, not just the token, and defaults to the
+                address you opened the CMS from. Regenerate a table’s code when a printed one is
+                compromised or the table is reissued.
+              </p>
             </div>
           </article>
         </section>
       ) : null}
+
       <section className="cms-table-grid">
-        {tables.map((table) => {
+        {qr.tables.map((table) => {
           const tableId = documentId(table);
-          const url = customerUrl(table.qrToken);
+          const url = qr.customerUrl(table.qrToken);
 
           return (
             <article className="cms-table-card" key={tableId}>
@@ -237,23 +223,42 @@ export default function TablesPage() {
                 <span className="cms-status">{table.status.replaceAll('_', ' ')}</span>
               </div>
               <div className="cms-qr-preview" aria-label={`QR preview for table ${table.tableNo}`}>
-                {qrImages[tableId] ? (
-                  <img alt={`Customer QR code for table ${table.tableNo}`} src={qrImages[tableId]} />
+                {qr.qrImages[tableId] ? (
+                  <img alt={`Customer QR code for table ${table.tableNo}`} src={qr.qrImages[tableId]} />
                 ) : (
-                  <span className="material-symbols-outlined" aria-hidden="true">qr_code_2</span>
+                  <span aria-hidden="true" className="material-symbols-outlined">qr_code_2</span>
                 )}
               </div>
               <div className="cms-qr-link">
                 <strong>{table.qrToken ?? 'No QR token'}</strong>
-                {url ? <a href={url} target="_blank" rel="noreferrer">{url}</a> : null}
+                {url ? <a href={url} rel="noreferrer" target="_blank">{url}</a> : null}
               </div>
-              {canManageTables ? (
-                <div className="action-row">
+              <div className="action-row">
+                {canEdit ? (
                   <button className="button-secondary" onClick={() => edit(table)} type="button">Edit</button>
-                  <button className="button-secondary" onClick={() => void regenerate(table)} type="button">Regenerate QR</button>
-                  <button className="danger-button" onClick={() => void remove(table)} type="button">Delete</button>
-                </div>
-              ) : null}
+                ) : null}
+                {canRegenerate ? (
+                  <button className="button-secondary" onClick={() => void qr.regenerate(table)} type="button">
+                    Regenerate QR
+                  </button>
+                ) : null}
+                {canDelete ? (
+                  confirmDeleteId === tableId ? (
+                    <>
+                      <button className="danger-button" onClick={() => void remove(table)} type="button">
+                        Confirm delete
+                      </button>
+                      <button className="button-quiet" onClick={() => setConfirmDeleteId('')} type="button">
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button className="danger-button" onClick={() => setConfirmDeleteId(tableId)} type="button">
+                      Delete
+                    </button>
+                  )
+                ) : null}
+              </div>
             </article>
           );
         })}

@@ -1,159 +1,121 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import QRCode from 'qrcode';
+import { useState } from 'react';
+import Link from 'next/link';
 
 import { PageShell } from '../../../components/page-shell';
-import {
-  documentId,
-  getCmsBranches,
-  getCmsTables,
-  getCmsTenants,
-  regenerateCmsQr,
-  type CmsBranch,
-  type CmsTable,
-  type CmsTenant,
-} from '../../../lib/api-client';
-import { readCmsSettings } from '../../../lib/cms-storage';
-import { isLocalhostOrigin, resolveCustomerOrigin } from '../../../lib/customer-origin';
+import { documentId } from '../../../lib/api-client';
+import { isLocalhostOrigin } from '../../../lib/customer-origin';
+import { useTableQr } from '../../../lib/use-table-qr';
 
-export default function QrPage() {
-  const [branch, setBranch] = useState<CmsBranch | null>(null);
-  const [branchId, setBranchId] = useState('');
-  const [customerOrigin, setCustomerOrigin] = useState(resolveCustomerOrigin);
-  const [qrImages, setQrImages] = useState<Record<string, string>>({});
-  const [tables, setTables] = useState<CmsTable[]>([]);
-  const [message, setMessage] = useState('Sign in to load QR tokens from the database.');
-  const [tenant, setTenant] = useState<CmsTenant | null>(null);
-  const [tenantId, setTenantId] = useState('');
-  const [token, setToken] = useState('');
+const PER_PAGE_OPTIONS = [
+  { columns: 1, label: '1 per page' },
+  { columns: 2, label: '4 per page' },
+  { columns: 3, label: '9 per page' },
+];
 
-  function customerUrl(qrToken?: string | null): string {
-    if (!qrToken || !tenant || !branch) return '';
-    return `${customerOrigin.replace(/\/$/, '')}/r/${tenant.slug}/${branch.slug}/t/${qrToken}`;
-  }
+/**
+ * Print sheet for table QR codes.
+ *
+ * Managing tables and codes lives on /tables — this page used to duplicate that
+ * screen almost line for line. Its job now is the one thing /tables cannot do:
+ * produce something you can physically put on a table.
+ */
+export default function QrPrintPage() {
+  // Printers rasterise the on-screen image, so render well above display size.
+  const qr = useTableQr({ width: 520 });
+  const [columns, setColumns] = useState(2);
+  const [showUrl, setShowUrl] = useState(false);
 
-  async function renderQrImages(nextTables: CmsTable[], nextTenant = tenant, nextBranch = branch, nextOrigin = customerOrigin): Promise<void> {
-    if (!nextTenant || !nextBranch) {
-      setQrImages({});
-      return;
-    }
-
-    const images = await Promise.all(
-      nextTables.map(async (table) => {
-        const qrToken = table.qrToken ?? '';
-        const url = qrToken ? `${nextOrigin.replace(/\/$/, '')}/r/${nextTenant.slug}/${nextBranch.slug}/t/${qrToken}` : '';
-        const dataUrl = url
-          ? await QRCode.toDataURL(url, {
-              color: { dark: '#111c2d', light: '#ffffff' },
-              errorCorrectionLevel: 'M',
-              margin: 2,
-              width: 280,
-            })
-          : '';
-        return [documentId(table), dataUrl] as const;
-      }),
-    );
-    setQrImages(Object.fromEntries(images));
-  }
-
-  async function load(
-    nextTenantId = tenantId,
-    nextBranchId = branchId,
-    nextToken = token,
-    nextOrigin = customerOrigin,
-  ): Promise<void> {
-    if (!nextTenantId || !nextBranchId || !nextToken) {
-      setMessage('Sign in to manage QR tokens.');
-      return;
-    }
-    try {
-      const [nextTenants, nextBranches, nextTables] = await Promise.all([
-        getCmsTenants(nextToken),
-        getCmsBranches(nextTenantId, nextToken),
-        getCmsTables(nextBranchId, nextToken),
-      ]);
-      const nextTenant = nextTenants.find((item) => documentId(item) === nextTenantId) ?? nextTenants[0] ?? null;
-      const nextBranch = nextBranches.find((item) => documentId(item) === nextBranchId) ?? nextBranches[0] ?? null;
-      setTenant(nextTenant);
-      setBranch(nextBranch);
-      setTables(nextTables);
-      await renderQrImages(nextTables, nextTenant, nextBranch, nextOrigin);
-      setMessage(nextTables.length ? '' : 'No QR tokens found for this branch.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not load QR tokens.');
-    }
-  }
-
-  useEffect(() => {
-    const settings = readCmsSettings();
-    const origin = resolveCustomerOrigin();
-    setBranchId(settings.branchId);
-    setCustomerOrigin(origin);
-    setTenantId(settings.tenantId);
-    setToken(settings.token);
-    void load(settings.tenantId, settings.branchId, settings.token, origin);
-  }, []);
-
-  useEffect(() => {
-    void renderQrImages(tables);
-  }, [customerOrigin, tenant, branch]);
-
-  async function regenerate(table: CmsTable): Promise<void> {
-    if (!token) return;
-    try {
-      await regenerateCmsQr(documentId(table), token);
-      await load();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not regenerate QR token.');
-    }
-  }
+  const printable = qr.tables.filter((table) => table.qrToken);
+  const localhost = isLocalhostOrigin(qr.customerOrigin);
 
   return (
-    <PageShell eyebrow="QR Manager" title="Issue, rotate, and trace table QR surfaces" description="Branch teams can reprint or regenerate tokens without losing visibility into last scan behavior.">
-      {message ? <p className="notice-text">{message}</p> : null}
-      <section className="panel">
+    <PageShell
+      description="Lay out every table's code on paper. Each sheet shows the outlet and table number so codes never end up on the wrong table."
+      eyebrow="QR Codes"
+      title="Print table QR codes"
+      toolbar={
+        <Link className="button-secondary" href="/tables">
+          <span aria-hidden="true" className="material-symbols-outlined">arrow_back</span>
+          Back to tables
+        </Link>
+      }
+    >
+      {qr.message ? <p className="notice-text">{qr.message}</p> : null}
+
+      <section className="panel qr-print-controls">
         <div className="cms-section-head">
-          <h2>Customer scan URL</h2>
-          <button className="button-secondary" onClick={() => void load()} type="button">Refresh QR codes</button>
+          <h2>Print setup</h2>
+          <button
+            disabled={printable.length === 0 || localhost}
+            onClick={() => window.print()}
+            title={localhost ? 'Open the CMS from your real domain first' : undefined}
+            type="button"
+          >
+            <span aria-hidden="true" className="material-symbols-outlined">print</span>
+            Print {printable.length} code{printable.length === 1 ? '' : 's'}
+          </button>
         </div>
-        <div className="form-stack">
+
+        {localhost ? (
+          <p className="notice-text">
+            <strong>These codes will not work.</strong> The CMS is open on <strong>localhost</strong>,
+            so every code points back at this computer. Open the CMS from your real domain, then print.
+          </p>
+        ) : null}
+
+        <div className="cms-form-grid cms-form-grid--two">
           <label>
-            Customer app origin
-            <input value={customerOrigin} onChange={(event) => setCustomerOrigin(event.target.value)} />
+            <span>Codes per page</span>
+            <select onChange={(event) => setColumns(Number(event.target.value))} value={columns}>
+              {PER_PAGE_OPTIONS.map((option) => (
+                <option key={option.columns} value={option.columns}>{option.label}</option>
+              ))}
+            </select>
           </label>
-          {isLocalhostOrigin(customerOrigin) ? (
-            <p className="notice-text">This origin is <strong>localhost</strong>, so the printed QR codes will only work on this computer. Open the CMS from the deployed domain before printing so the codes point at a URL customers can reach.</p>
-          ) : null}
-          <p className="muted">Each QR encodes the full table URL above, not only the token. The origin defaults to whatever address you opened the CMS from.</p>
+          <label>
+            <span>Customer app origin</span>
+            <input onChange={(event) => qr.setCustomerOrigin(event.target.value)} value={qr.customerOrigin} />
+          </label>
         </div>
+        <label className="checkbox-row">
+          <input checked={showUrl} onChange={(event) => setShowUrl(event.target.checked)} type="checkbox" />
+          Print the link under each code
+        </label>
+        <p className="muted">
+          Codes are rendered at high resolution, so they stay sharp on paper. To change a table’s
+          code, use Regenerate on the <Link href="/tables">tables screen</Link>.
+        </p>
       </section>
-      <section className="cms-table-grid">
-        {tables.map((table) => (
-          <article className="cms-table-card" key={documentId(table)}>
-            <div className="cms-table-card__head">
-              <div>
-                <h2>Table {table.tableNo}</h2>
-                <p className="muted">Active customer QR</p>
-              </div>
-              <span className="cms-status">{table.status.replaceAll('_', ' ')}</span>
-            </div>
-            <div className="cms-qr-preview cms-qr-preview--large">
-              {qrImages[documentId(table)] ? (
-                <img alt={`Customer QR code for table ${table.tableNo}`} src={qrImages[documentId(table)]} />
-              ) : (
-                <span className="material-symbols-outlined" aria-hidden="true">qr_code_2</span>
-              )}
-            </div>
-            <div className="cms-qr-link">
-              <strong>{table.qrToken ?? 'No QR token'}</strong>
-              {customerUrl(table.qrToken) ? <a href={customerUrl(table.qrToken)} target="_blank" rel="noreferrer">{customerUrl(table.qrToken)}</a> : null}
-            </div>
-            <div className="action-row">
-              <button className="button-secondary" onClick={() => void regenerate(table)} type="button">Regenerate QR</button>
-            </div>
-          </article>
-        ))}
+
+      {printable.length === 0 && !qr.message ? (
+        <section className="panel">
+          <p className="muted">No tables have a QR code yet. Add tables first, then come back here to print.</p>
+        </section>
+      ) : null}
+
+      <section className={`qr-sheet qr-sheet--${columns}`}>
+        {printable.map((table) => {
+          const tableId = documentId(table);
+
+          return (
+            <article className="qr-card" key={tableId}>
+              <p className="qr-card__brand">{qr.tenant?.legalName ?? ''}</p>
+              <p className="qr-card__outlet">{qr.branch?.name ?? ''}</p>
+              <h2 className="qr-card__table">Table {table.tableNo}</h2>
+              {qr.qrImages[tableId] ? (
+                <img
+                  alt={`Customer QR code for table ${table.tableNo}`}
+                  className="qr-card__code"
+                  src={qr.qrImages[tableId]}
+                />
+              ) : null}
+              <p className="qr-card__cta">Scan to see the menu and order</p>
+              {showUrl ? <p className="qr-card__url">{qr.customerUrl(table.qrToken)}</p> : null}
+            </article>
+          );
+        })}
       </section>
     </PageShell>
   );
