@@ -1,5 +1,5 @@
-import { SuperAdminConsole } from '../super-admin-console';
+import { BillingView } from '../_components/billing-view';
 
-export default function SuperAdminBillingPage() {
-  return <SuperAdminConsole view="billing" />;
+export default function Page() {
+  return <BillingView />;
 }

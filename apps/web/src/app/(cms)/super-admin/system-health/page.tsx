@@ -1,5 +1,5 @@
-import { SuperAdminConsole } from '../super-admin-console';
+import { SystemHealthView } from '../_components/system-health-view';
 
-export default function SuperAdminSystemHealthPage() {
-  return <SuperAdminConsole view="system-health" />;
+export default function Page() {
+  return <SystemHealthView />;
 }

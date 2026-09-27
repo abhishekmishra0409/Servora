@@ -1,5 +1,5 @@
-import { SuperAdminConsole } from '../super-admin-console';
+import { SubscriptionsView } from '../_components/subscriptions-view';
 
-export default function SuperAdminSubscriptionsPage() {
-  return <SuperAdminConsole view="subscriptions" />;
+export default function Page() {
+  return <SubscriptionsView />;
 }

@@ -1,5 +1,5 @@
-import { SuperAdminConsole } from '../super-admin-console';
+import { AuditLogView } from '../_components/audit-log-view';
 
-export default function SuperAdminAuditLogsPage() {
-  return <SuperAdminConsole view="audit-logs" />;
+export default function Page() {
+  return <AuditLogView />;
 }
