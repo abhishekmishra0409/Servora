@@ -106,7 +106,7 @@ export function CustomerLandingClient({
     <CustomerPage>
       <Card className="gap-0 overflow-hidden p-0 shadow-card">
         <div className="relative aspect-[4/3] w-full">
-          <Image alt="" className="object-cover" fill priority sizes="(max-width: 768px) 100vw, 672px" src="/images/customer-hero.png" />
+          <Image alt="" className="object-cover" fill priority sizes="(max-width: 768px) 100vw, 672px" src="/images/guest-hero.svg" />
           <div className="absolute inset-0 bg-gradient-to-t from-foreground/85 via-foreground/30 to-transparent" />
           <div className="absolute inset-x-0 bottom-0 space-y-2 p-5 text-background">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1 text-xs font-semibold text-primary">
