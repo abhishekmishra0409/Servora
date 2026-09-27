@@ -1,48 +1,88 @@
-"use client";
+'use client';
 
+import { Crown } from 'lucide-react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 
-import { useCmsSession } from './cms-session-provider';
-import type { ApiError } from '../lib/api-client';
+import { useCmsSession } from '@/components/cms-session-provider';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import type { ApiError } from '@/lib/api-client';
+import { cn } from '@/lib/utils';
 
 /** `0` means unlimited, matching the API's limit convention. */
 const isUnlimited = (cap: number): boolean => !cap || cap <= 0;
 
-export function UsageMeter({ cap, label, used }: { cap: number; label: string; used: number }): React.ReactElement {
+function usageTone(cap: number, used: number): 'default' | 'warning' | 'blocked' {
+  if (isUnlimited(cap)) {
+    return 'default';
+  }
+  if (used >= cap) {
+    return 'blocked';
+  }
+  return used / cap >= 0.8 ? 'warning' : 'default';
+}
+
+export function UsageMeter({ cap, label, used }: { cap: number; label: string; used: number }): ReactNode {
   const unlimited = isUnlimited(cap);
   const pct = unlimited ? 0 : Math.min(100, Math.round((used / cap) * 100));
-  const tone = unlimited ? '' : used >= cap ? ' usage-meter--blocked' : pct >= 80 ? ' usage-meter--warn' : '';
+  const tone = usageTone(cap, used);
 
   return (
-    <article className={`card kpi cms-kpi usage-meter${tone}`}>
-      <strong>{unlimited ? String(used) : `${used} / ${cap}`}</strong>
-      <span className="muted">{label}</span>
-      {unlimited ? null : (
-        <span aria-hidden="true" className="usage-meter__bar">
-          <span style={{ width: `${pct}%` }} />
-        </span>
+    <Card className="gap-2 px-5 py-4 shadow-card">
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+      <p className="font-display text-2xl font-semibold tabular-nums">
+        {unlimited ? used : (
+          <>
+            {used} <span className="text-base font-normal text-muted-foreground">/ {cap}</span>
+          </>
+        )}
+      </p>
+      {unlimited ? (
+        <p className="text-xs text-muted-foreground">Unlimited on this plan</p>
+      ) : (
+        <Progress
+          aria-label={`${label} usage`}
+          className={cn(
+            'h-1.5',
+            tone === 'warning' && '[&>[data-slot=progress-indicator]]:bg-warning',
+            tone === 'blocked' && '[&>[data-slot=progress-indicator]]:bg-destructive',
+          )}
+          value={pct}
+        />
       )}
-    </article>
+    </Card>
   );
 }
 
-/** Compact "12 / 25 used" line shown directly above a create form. */
-export function UsageStrip({ cap, label, used }: { cap: number; label: string; used: number }): React.ReactElement | null {
+/** Compact "12 of 25 used" line shown directly above a create form. */
+export function UsageStrip({ cap, label, used }: { cap: number; label: string; used: number }): ReactNode {
   const { can } = useCmsSession();
 
   if (isUnlimited(cap)) {
     return null;
   }
 
-  const blocked = used >= cap;
+  const tone = usageTone(cap, used);
 
   return (
-    <div className={`usage-strip${blocked ? ' usage-strip--blocked' : ''}`}>
+    <div
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-2.5 text-sm shadow-card',
+        tone === 'blocked' && 'border-destructive/40',
+      )}
+    >
       <span>
-        <strong>{label}:</strong> {used} of {cap} used
+        <span className="font-semibold">{label}:</span>{' '}
+        <span className={cn('tabular-nums', tone === 'blocked' && 'text-destructive', tone === 'warning' && 'text-warning')}>
+          {used} of {cap} used
+        </span>
       </span>
-      {blocked && can('subscription:view') ? (
-        <Link className="button-secondary" href="/subscription">Upgrade plan</Link>
+      {tone === 'blocked' && can('subscription:view') ? (
+        <Button asChild size="sm" variant="outline">
+          <Link href="/subscription">Upgrade plan</Link>
+        </Button>
       ) : null}
     </div>
   );
@@ -52,13 +92,7 @@ export function UsageStrip({ cap, label, used }: { cap: number; label: string; u
  * Rendered where a create failed. Only reacts to the structured plan-limit
  * code, so a permission denial never shows an upgrade prompt.
  */
-export function PlanLimitNotice({
-  error,
-  resource,
-}: {
-  error: ApiError | null;
-  resource: string;
-}): React.ReactElement | null {
+export function PlanLimitNotice({ error, resource }: { error: ApiError | null; resource: string }): ReactNode {
   const { can } = useCmsSession();
 
   if (!error || error.code !== 'PLAN_LIMIT_REACHED') {
@@ -66,17 +100,22 @@ export function PlanLimitNotice({
   }
 
   return (
-    <section className="panel limit-block">
-      <span className="pill">Plan limit reached</span>
-      <h2>{error.message}</h2>
-      <p className="muted">Your existing {resource} keep working. Upgrade to add more.</p>
+    <Card className="gap-2 border-l-4 border-l-destructive px-5 py-4 shadow-card" role="alert">
+      <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-destructive">
+        <Crown aria-hidden="true" className="size-3.5" />
+        Plan limit reached
+      </p>
+      <p className="font-semibold">{error.message}</p>
+      <p className="text-sm text-muted-foreground">Your existing {resource} keep working. Upgrade to add more.</p>
       {can('subscription:view') ? (
-        <div className="action-row">
-          <Link className="button-secondary" href="/subscription">See plans</Link>
+        <div className="pt-1">
+          <Button asChild size="sm">
+            <Link href="/subscription">See plans</Link>
+          </Button>
         </div>
       ) : (
-        <p className="muted">Ask the restaurant owner to upgrade the plan.</p>
+        <p className="text-sm text-muted-foreground">Ask the restaurant owner to upgrade the plan.</p>
       )}
-    </section>
+    </Card>
   );
 }

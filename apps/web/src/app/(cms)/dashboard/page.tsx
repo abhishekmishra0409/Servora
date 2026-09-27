@@ -1,14 +1,22 @@
 'use client';
 
+import { BellRing, ChefHat, CircleCheckBig, IndianRupee, ReceiptText, Armchair } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-import { getLiveOrders, getOrderById, type LiveOrder } from '../../../lib/api-client';
-import { readCmsSettings } from '../../../lib/cms-storage';
-import { formatOrderNumber } from '../../../lib/order-number';
-import { createSocketClient } from '../../../lib/socket';
-
-const money = (value: number): string =>
-  new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
+import { EmptyState } from '@/components/empty-state';
+import { ErrorState } from '@/components/error-state';
+import { LoadingRows } from '@/components/loading-state';
+import { PageHeader } from '@/components/page-header';
+import { PageShell } from '@/components/page-shell';
+import { SectionCard } from '@/components/section-card';
+import { StatCard, StatGrid } from '@/components/stat-card';
+import { StatusBadge } from '@/components/status-badge';
+import { getLiveOrders, getOrderById, type LiveOrder } from '@/lib/api-client';
+import { failed, loading, ready, type AsyncState } from '@/lib/async-state';
+import { readCmsSettings } from '@/lib/cms-storage';
+import { money, shortId } from '@/lib/format';
+import { formatOrderNumber } from '@/lib/order-number';
+import { createSocketClient } from '@/lib/socket';
 
 const liveStatuses = new Set(['accepted', 'pending_confirmation', 'preparing', 'ready']);
 
@@ -18,15 +26,13 @@ export default function DashboardPage() {
   const [branchId, setBranchId] = useState('');
   const [token, setToken] = useState('');
   const [orders, setOrders] = useState<LiveOrder[]>([]);
-  const [message, setMessage] = useState('Sign in to load dashboard data from the database.');
+  const [state, setState] = useState<AsyncState>(loading);
 
   useEffect(() => {
     const settings = readCmsSettings();
     setBranchId(settings.branchId);
     setToken(settings.token);
-    if (settings.branchId && settings.token) {
-      void load(settings.branchId, settings.token);
-    }
+    void load(settings.branchId, settings.token);
     const socket = settings.token ? createSocketClient(settings.token) : null;
     const syncOrderEvent = (payload?: { orderId?: string }): void => {
       if (payload?.orderId) {
@@ -46,30 +52,23 @@ export default function DashboardPage() {
   const kpis = useMemo(() => {
     const pending = orders.filter((order) => order.status === 'pending_confirmation').length;
     const kitchen = orders.filter((order) => ['accepted', 'preparing', 'ready'].includes(order.status)).length;
-    const ready = orders.filter((order) => order.status === 'ready').length;
+    const readyCount = orders.filter((order) => order.status === 'ready').length;
     const value = orders.reduce((total, order) => total + order.grandTotal, 0);
-
-    return [
-      { label: 'Pending confirmation', value: String(pending) },
-      { label: 'Kitchen queue', value: String(kitchen) },
-      { label: 'Ready to serve', value: String(ready) },
-      { label: 'Live order value', value: money(value) },
-    ];
+    return { kitchen, pending, ready: readyCount, value };
   }, [orders]);
 
   async function load(nextBranchId = branchId, nextToken = token): Promise<void> {
     if (!nextBranchId || !nextToken) {
       setOrders([]);
-      setMessage('Sign in to load dashboard data from the database.');
+      setState(failed(new Error('This account is not linked to an outlet yet.')));
       return;
     }
     try {
-      const nextOrders = await getLiveOrders(nextBranchId, nextToken);
-      setOrders(nextOrders);
-      setMessage(nextOrders.length ? '' : 'No live order activity yet.');
+      setOrders(await getLiveOrders(nextBranchId, nextToken));
+      setState(ready);
     } catch (error) {
       setOrders([]);
-      setMessage(error instanceof Error ? error.message : 'Could not load dashboard data.');
+      setState(failed(error, 'Could not load dashboard data.'));
     }
   }
 
@@ -77,16 +76,13 @@ export default function DashboardPage() {
     if (!nextBranchId || !nextToken) {
       return;
     }
-
     try {
       const order = await getOrderById(orderId, nextToken);
-      setOrders((currentOrders) => {
-        const nextOrders = liveStatuses.has(order.status)
+      setOrders((currentOrders) =>
+        liveStatuses.has(order.status)
           ? upsertOrder(currentOrders, order)
-          : currentOrders.filter((currentOrder) => orderKey(currentOrder) !== orderKey(order));
-        setMessage(nextOrders.length ? '' : 'No live order activity yet.');
-        return nextOrders;
-      });
+          : currentOrders.filter((currentOrder) => orderKey(currentOrder) !== orderKey(order)),
+      );
     } catch {
       void load(nextBranchId, nextToken);
     }
@@ -100,96 +96,98 @@ export default function DashboardPage() {
     );
   }
 
+  const pendingOrders = orders.filter((order) => order.status === 'pending_confirmation');
+
   return (
-    <main>
-      <div className="page-shell">
-        <section className="customer-header">
-          <div>
-            <p className="eyebrow">CMS Dashboard</p>
-            <h1>Live Dashboard</h1>
-            <p className="muted">High-density operational view from the active database order queue.</p>
-          </div>
-          <button onClick={() => void load()} type="button">
-            <span aria-hidden="true" className="material-symbols-outlined">
-              refresh
-            </span>
-            Refresh
-          </button>
-        </section>
+    <PageShell>
+      <PageHeader
+        description="Live view of the order queue for this outlet. Updates arrive in realtime."
+        eyebrow="Overview"
+        onRefresh={() => void load()}
+        refreshing={state.status === 'loading'}
+        title="Live dashboard"
+      />
 
-        {message ? (
-          <p className="notice-text">
-            {message} <a href="/login">Go to owner login</a>
-          </p>
-        ) : null}
+      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
 
-        <section className="card-grid">
-          {kpis.map((kpi, index) => (
-            <article className={`card kpi cms-kpi cms-kpi--${index}`} key={kpi.label}>
-              <strong>{kpi.value}</strong>
-              <span className="muted">{kpi.label}</span>
-            </article>
-          ))}
-        </section>
+      <StatGrid>
+        <StatCard icon={BellRing} label="Pending confirmation" tone="warning" value={kpis.pending} />
+        <StatCard icon={ChefHat} label="Kitchen queue" tone="info" value={kpis.kitchen} />
+        <StatCard icon={CircleCheckBig} label="Ready to serve" tone="success" value={kpis.ready} />
+        <StatCard icon={IndianRupee} label="Live order value" tone="primary" value={money(kpis.value)} />
+      </StatGrid>
 
-        <section className="cms-dashboard-grid">
-          <article className="panel">
-            <h2>Priority orders</h2>
-            <div className="cms-list">
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <SectionCard className="lg:row-span-2" description="Newest first" title="Priority orders">
+          {state.status === 'loading' ? (
+            <LoadingRows count={4} />
+          ) : orders.length === 0 ? (
+            <EmptyState compact description="New orders from the floor will show up here." icon={ReceiptText} title="No live orders" />
+          ) : (
+            <ul className="divide-y">
+              {orders.slice(0, 6).map((order) => (
+                <li className="flex items-center gap-3 py-3" key={orderKey(order)}>
+                  <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                    <ReceiptText aria-hidden="true" className="size-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{formatOrderNumber(order.orderNo)}</p>
+                    <p className="text-xs text-muted-foreground">Table ···{shortId(order.tableId)}</p>
+                  </div>
+                  <StatusBadge kind="order" value={order.status} />
+                  <span className="w-24 text-right text-sm font-semibold tabular-nums">{money(order.grandTotal)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+
+        <SectionCard title="Floor signals">
+          {state.status === 'loading' ? (
+            <LoadingRows count={3} />
+          ) : orders.length === 0 ? (
+            <EmptyState compact icon={Armchair} title="No active tables" />
+          ) : (
+            <ul className="divide-y">
               {orders.slice(0, 4).map((order) => (
-                <div className="cms-list-row" key={order.id ?? order._id}>
-                  <span className="material-symbols-outlined" aria-hidden="true">
-                    receipt_long
+                <li className="flex items-center gap-3 py-3" key={`${orderKey(order)}-table`}>
+                  <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+                    <Armchair aria-hidden="true" className="size-4" />
                   </span>
-                  <div>
-                    <strong>{formatOrderNumber(order.orderNo)}</strong>
-                    <p className="muted">
-                      Table ···{order.tableId.slice(-4)} - {order.status.replaceAll('_', ' ')}
-                    </p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">Table ···{shortId(order.tableId)}</p>
+                    <p className="text-xs text-muted-foreground">{order.items.length} active items</p>
                   </div>
-                  <strong>{money(order.grandTotal)}</strong>
-                </div>
+                  <StatusBadge kind="order" value={order.status} />
+                </li>
               ))}
-            </div>
-          </article>
+            </ul>
+          )}
+        </SectionCard>
 
-          <article className="panel">
-            <h2>Floor signals</h2>
-            <div className="cms-list">
-              {orders.slice(0, 3).map((order) => (
-                <div className="cms-list-row" key={`${order.id ?? order._id}-table`}>
-                  <span className="material-symbols-outlined" aria-hidden="true">
-                    table_restaurant
+        <SectionCard description="Orders waiting for a waiter to confirm" title="Confirmation queue">
+          {state.status === 'loading' ? (
+            <LoadingRows count={2} />
+          ) : pendingOrders.length === 0 ? (
+            <EmptyState compact icon={BellRing} title="Nothing waiting" />
+          ) : (
+            <ul className="divide-y">
+              {pendingOrders.map((order) => (
+                <li className="flex items-center gap-3 py-3" key={`${orderKey(order)}-service`}>
+                  <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-warning-foreground text-warning">
+                    <BellRing aria-hidden="true" className="size-4" />
                   </span>
-                  <div>
-                    <strong>Table ···{order.tableId.slice(-4)}</strong>
-                    <p className="muted">{order.items.length} active items</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">{formatOrderNumber(order.orderNo)}</p>
+                    <p className="text-xs text-muted-foreground">Table ···{shortId(order.tableId)}</p>
                   </div>
-                  <span className="cms-status">{order.status.replaceAll('_', ' ')}</span>
-                </div>
+                  <span className="text-sm font-semibold tabular-nums">{money(order.grandTotal)}</span>
+                </li>
               ))}
-            </div>
-          </article>
-
-          <article className="panel">
-            <h2>Service queue</h2>
-            <div className="cms-list">
-              {orders.filter((order) => order.status === 'pending_confirmation').map((order) => (
-                <div className="cms-list-row" key={`${order.id ?? order._id}-service`}>
-                  <span className="material-symbols-outlined" aria-hidden="true">
-                    notifications_active
-                  </span>
-                  <div>
-                    <strong>Kitchen confirmation</strong>
-                    <p className="muted">{formatOrderNumber(order.orderNo)}</p>
-                  </div>
-                  <span className="cms-status">Pending</span>
-                </div>
-              ))}
-            </div>
-          </article>
-        </section>
-      </div>
-    </main>
+            </ul>
+          )}
+        </SectionCard>
+      </section>
+    </PageShell>
   );
 }

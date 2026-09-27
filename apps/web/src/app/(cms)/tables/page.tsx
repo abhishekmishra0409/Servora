@@ -1,10 +1,20 @@
 'use client';
 
+import { Armchair, FileText, Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
-import { PageShell } from '../../../components/page-shell';
-import { PlanLimitNotice, UsageStrip } from '../../../components/plan-limit-notice';
-import { useCmsSession } from '../../../components/cms-session-provider';
+import { useCmsSession } from '@/components/cms-session-provider';
+import { EmptyState } from '@/components/empty-state';
+import { ErrorState, NoticeBanner } from '@/components/error-state';
+import { FormActions, FormField } from '@/components/form-field';
+import { LoadingCards } from '@/components/loading-state';
+import { PageShell } from '@/components/page-shell';
+import { PlanLimitNotice, UsageStrip } from '@/components/plan-limit-notice';
+import { QrTableCard } from '@/components/qr-table-card';
+import { SectionCard } from '@/components/section-card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   ApiError,
   createCmsTable,
@@ -12,11 +22,12 @@ import {
   documentId,
   updateCmsTable,
   type CmsTable,
-} from '../../../lib/api-client';
-import { isLocalhostOrigin } from '../../../lib/customer-origin';
-import { downloadTableQrPdf, downloadTableQrPng, type TableQrCard } from '../../../lib/qr-download';
-import { createSocketClient } from '../../../lib/socket';
-import { useTableQr } from '../../../lib/use-table-qr';
+} from '@/lib/api-client';
+import { errorMessage } from '@/lib/async-state';
+import { isLocalhostOrigin } from '@/lib/customer-origin';
+import { downloadTableQrPdf, downloadTableQrPng, type TableQrCard } from '@/lib/qr-download';
+import { createSocketClient } from '@/lib/socket';
+import { useTableQr } from '@/lib/use-table-qr';
 
 export default function TablesPage() {
   const session = useCmsSession();
@@ -24,7 +35,7 @@ export default function TablesPage() {
   const [editingId, setEditingId] = useState('');
   const [form, setForm] = useState({ capacity: '4', floorId: '', tableNo: '' });
   const [limitError, setLimitError] = useState<ApiError | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState('');
+  const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState('');
 
   const { branchId, tenantId, token } = session;
@@ -65,15 +76,17 @@ export default function TablesPage() {
   function edit(table: CmsTable): void {
     setEditingId(documentId(table));
     setForm({ capacity: String(table.capacity), floorId: table.floorId ?? '', tableNo: table.tableNo });
+    window.scrollTo({ behavior: 'smooth', top: 0 });
   }
 
   async function submit(): Promise<void> {
     if (!tenantId || !branchId || !token || !form.floorId || !form.tableNo.trim()) {
-      qr.setMessage('Outlet, floor, table number, and a signed-in session are all required.');
+      toast.error('Outlet, floor, and table number are all required.');
       return;
     }
 
     setLimitError(null);
+    setSaving(true);
 
     try {
       if (editingId) {
@@ -82,6 +95,7 @@ export default function TablesPage() {
           { capacity: Number(form.capacity), floorId: form.floorId, tableNo: form.tableNo },
           token,
         );
+        toast.success(`Table ${form.tableNo} updated`);
       } else {
         await createCmsTable(
           {
@@ -93,6 +107,7 @@ export default function TablesPage() {
           },
           token,
         );
+        toast.success(`Table ${form.tableNo.trim()} created`);
       }
 
       resetForm();
@@ -101,10 +116,11 @@ export default function TablesPage() {
     } catch (error) {
       if (error instanceof ApiError && error.code === 'PLAN_LIMIT_REACHED') {
         setLimitError(error);
-        qr.setMessage('');
       } else {
-        qr.setMessage(error instanceof Error ? error.message : 'Could not save the table.');
+        toast.error(errorMessage(error, 'Could not save the table.'));
       }
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -113,11 +129,12 @@ export default function TablesPage() {
 
     try {
       await deleteCmsTable(documentId(table), token);
-      setConfirmDeleteId('');
+      toast.success(`Table ${table.tableNo} deleted`);
       await qr.reload();
       await session.refreshEntitlements();
     } catch (error) {
-      qr.setMessage(error instanceof Error ? error.message : 'Could not delete the table.');
+      toast.error(errorMessage(error, 'Could not delete the table.'));
+      throw error;
     }
   }
 
@@ -138,7 +155,7 @@ export default function TablesPage() {
     try {
       await downloadTableQrPng(cardFor(table));
     } catch (error) {
-      qr.setMessage(error instanceof Error ? error.message : 'Could not build the download.');
+      toast.error(errorMessage(error, 'Could not build the download.'));
     } finally {
       setDownloading('');
     }
@@ -153,7 +170,7 @@ export default function TablesPage() {
 
       await downloadTableQrPdf(cards, `${outlet.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-table-qr-codes.pdf`);
     } catch (error) {
-      qr.setMessage(error instanceof Error ? error.message : 'Could not build the PDF.');
+      toast.error(errorMessage(error, 'Could not build the PDF.'));
     } finally {
       setDownloading('');
     }
@@ -163,161 +180,129 @@ export default function TablesPage() {
   const used = session.entitlements?.usage.tables ?? qr.tables.length;
   const atCap = cap > 0 && used >= cap;
   const downloadable = qr.tables.filter((table) => table.qrToken).length;
+  const isLoading = qr.message === 'Loading tables...';
+  const loadError = !isLoading && qr.message && qr.tables.length === 0 && !qr.message.startsWith('No tables') ? qr.message : '';
 
   return (
     <PageShell
+      actions={
+        downloadable > 0 ? (
+          <Button disabled={downloading !== ''} onClick={() => void downloadAll()} type="button" variant="outline">
+            <FileText />
+            {downloading === 'all' ? 'Preparing PDF' : `Download all ${downloadable} as PDF`}
+          </Button>
+        ) : undefined
+      }
       description="Tables, their live status, and the customer QR code each one carries."
       eyebrow="Tables"
-      title="Table and QR operations"
-      toolbar={
-        downloadable > 0 ? (
-          <button
-            className="button-secondary"
-            disabled={downloading !== ''}
-            onClick={() => void downloadAll()}
-            type="button"
-          >
-            <span aria-hidden="true" className="material-symbols-outlined">picture_as_pdf</span>
-            {downloading === 'all' ? 'Preparing PDF...' : `Download all ${downloadable} as PDF`}
-          </button>
-        ) : null
-      }
+      title="Tables and QR codes"
     >
-      {qr.message ? <p className="notice-text">{qr.message}</p> : null}
+      {loadError ? <ErrorState message={loadError} onRetry={() => void qr.reload()} /> : null}
       <PlanLimitNotice error={limitError} resource="tables" />
-
       <UsageStrip cap={cap} label="Tables" used={used} />
 
       {canAdd || canEdit ? (
-        <section className="cms-settings-grid">
-          <article className="panel">
-            <div className="cms-section-head">
-              <h2>{editingId ? 'Update table' : 'Add table'}</h2>
-              {editingId ? (
-                <button className="button-secondary" onClick={resetForm} type="button">Cancel</button>
-              ) : null}
-            </div>
-            <div className="form-stack">
-              <label>
-                Table number
-                <input onChange={(event) => setForm({ ...form, tableNo: event.target.value })} value={form.tableNo} />
-              </label>
-              <label>
-                Capacity
-                <input
+        <section className="grid gap-4 lg:grid-cols-2">
+          <SectionCard
+            actions={
+              editingId ? (
+                <Button onClick={resetForm} size="sm" type="button" variant="ghost">
+                  Cancel
+                </Button>
+              ) : undefined
+            }
+            title={editingId ? 'Update table' : 'Add table'}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField htmlFor="table-no" label="Table number" required>
+                <Input
+                  id="table-no"
+                  onChange={(event) => setForm({ ...form, tableNo: event.target.value })}
+                  placeholder="12"
+                  value={form.tableNo}
+                />
+              </FormField>
+              <FormField htmlFor="table-capacity" label="Capacity">
+                <Input
+                  id="table-capacity"
                   min="1"
                   onChange={(event) => setForm({ ...form, capacity: event.target.value })}
                   type="number"
                   value={form.capacity}
                 />
-              </label>
-              <label>
-                Floor ID
-                <input onChange={(event) => setForm({ ...form, floorId: event.target.value })} value={form.floorId} />
-              </label>
-              <button
-                disabled={!editingId && atCap}
+              </FormField>
+              <FormField className="sm:col-span-2" hint="Copied from an existing table on this outlet when left blank." htmlFor="table-floor" label="Floor ID" required>
+                <Input
+                  id="table-floor"
+                  onChange={(event) => setForm({ ...form, floorId: event.target.value })}
+                  value={form.floorId}
+                />
+              </FormField>
+            </div>
+            <FormActions>
+              <Button
+                disabled={saving || (!editingId && atCap)}
                 onClick={() => void submit()}
                 title={!editingId && atCap ? 'Your plan’s table limit is reached' : undefined}
                 type="button"
               >
+                {editingId ? null : <Plus />}
                 {editingId ? 'Update table' : 'Create table'}
-              </button>
-            </div>
-          </article>
+              </Button>
+            </FormActions>
+          </SectionCard>
 
-          <article className="panel">
-            <div className="cms-section-head"><h2>Customer QR link</h2></div>
-            <div className="form-stack">
-              <label>
-                Customer app origin
-                <input
-                  onChange={(event) => qr.setCustomerOrigin(event.target.value)}
-                  value={qr.customerOrigin}
-                />
-              </label>
-              {isLocalhostOrigin(qr.customerOrigin) ? (
-                <p className="notice-text">
-                  This origin is <strong>localhost</strong>, so these codes only work on this computer.
-                  Open the CMS from your real domain before you download them.
-                </p>
-              ) : null}
-              <p className="muted">
-                Each code encodes the full table URL above, not just the token, and defaults to the
-                address you opened the CMS from. Regenerate a table’s code when a printed one is
-                compromised or the table is reissued.
-              </p>
-            </div>
-          </article>
+          <SectionCard
+            description="Each code encodes the full table URL, not just the token, so a printed code works with nothing else configured."
+            title="Customer QR link"
+          >
+            <FormField htmlFor="customer-origin" label="Customer app origin">
+              <Input id="customer-origin" onChange={(event) => qr.setCustomerOrigin(event.target.value)} value={qr.customerOrigin} />
+            </FormField>
+            {isLocalhostOrigin(qr.customerOrigin) ? (
+              <NoticeBanner>
+                This origin is <strong>localhost</strong>, so these codes only work on this computer. Open the CMS from your
+                real domain before you download them.
+              </NoticeBanner>
+            ) : null}
+            <p className="text-sm text-muted-foreground">
+              Regenerate a table’s code when a printed one is compromised or the table is reissued.
+            </p>
+          </SectionCard>
         </section>
       ) : null}
 
-      <section className="cms-table-grid">
-        {qr.tables.map((table) => {
-          const tableId = documentId(table);
-          const url = qr.customerUrl(table.qrToken);
-
-          return (
-            <article className="cms-table-card" key={tableId}>
-              <div className="cms-table-card__head">
-                <div>
-                  <h2>Table {table.tableNo}</h2>
-                  <p className="muted">{table.capacity} seats</p>
-                </div>
-                <span className="cms-status">{table.status.replaceAll('_', ' ')}</span>
-              </div>
-              <div className="cms-qr-preview" aria-label={`QR preview for table ${table.tableNo}`}>
-                {qr.qrImages[tableId] ? (
-                  <img alt={`Customer QR code for table ${table.tableNo}`} src={qr.qrImages[tableId]} />
-                ) : (
-                  <span aria-hidden="true" className="material-symbols-outlined">qr_code_2</span>
-                )}
-              </div>
-              <div className="cms-qr-link">
-                <strong>{table.qrToken ?? 'No QR token'}</strong>
-                {url ? <a href={url} rel="noreferrer" target="_blank">{url}</a> : null}
-              </div>
-              <div className="action-row">
-                {table.qrToken ? (
-                  <button
-                    className="button-secondary"
-                    disabled={downloading !== ''}
-                    onClick={() => void downloadOne(table)}
-                    type="button"
-                  >
-                    <span aria-hidden="true" className="material-symbols-outlined">download</span>
-                    {downloading === tableId ? 'Preparing...' : 'Download'}
-                  </button>
-                ) : null}
-                {canEdit ? (
-                  <button className="button-secondary" onClick={() => edit(table)} type="button">Edit</button>
-                ) : null}
-                {canRegenerate ? (
-                  <button className="button-secondary" onClick={() => void qr.regenerate(table)} type="button">
-                    Regenerate QR
-                  </button>
-                ) : null}
-                {canDelete ? (
-                  confirmDeleteId === tableId ? (
-                    <>
-                      <button className="danger-button" onClick={() => void remove(table)} type="button">
-                        Confirm delete
-                      </button>
-                      <button className="button-quiet" onClick={() => setConfirmDeleteId('')} type="button">
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <button className="danger-button" onClick={() => setConfirmDeleteId(tableId)} type="button">
-                      Delete
-                    </button>
-                  )
-                ) : null}
-              </div>
-            </article>
-          );
-        })}
-      </section>
+      {isLoading ? (
+        <LoadingCards count={4} />
+      ) : qr.tables.length === 0 ? (
+        <EmptyState
+          description={canAdd ? 'Create the first table above to generate its QR code.' : 'No tables have been set up for this outlet yet.'}
+          icon={Armchair}
+          title="No tables yet"
+        />
+      ) : (
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {qr.tables.map((table) => {
+            const tableId = documentId(table);
+            return (
+              <QrTableCard
+                canDelete={canDelete}
+                canEdit={canEdit}
+                canRegenerate={canRegenerate}
+                downloading={downloading === tableId || downloading === 'all'}
+                key={tableId}
+                onDelete={() => remove(table)}
+                onDownload={() => void downloadOne(table)}
+                onEdit={() => edit(table)}
+                onRegenerate={() => void qr.regenerate(table)}
+                qrImage={qr.qrImages[tableId]}
+                table={table}
+                url={qr.customerUrl(table.qrToken)}
+              />
+            );
+          })}
+        </section>
+      )}
     </PageShell>
   );
 }
