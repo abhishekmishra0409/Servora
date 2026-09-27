@@ -28,4 +28,14 @@ Key events:
 - `menu.changed`
 - `branch.updated`
 
+## Same-origin proxying
+
+The web app proxies `/socket.io/:path*` to the API. Socket.IO polls
+`/socket.io/` **with a trailing slash**, and its engine only answers that exact
+path, so `apps/web/next.config.ts` sets `skipTrailingSlashRedirect: true`.
+Without it Next 308-redirects `/socket.io/` to `/socket.io`, the API returns 404,
+and the client retries forever without ever connecting — realtime silently
+degrades to polling fallbacks. If you see repeated `/socket.io` 404s in the API
+log, that redirect is back.
+
 The API hosts Socket.IO on the same origin as REST traffic under `/socket.io`. API services publish events directly to the in-process Socket.IO server and broadcast them to Socket.IO rooms. CMS, customer, waiter, and kitchen screens keep polling fallbacks between 30 and 60 seconds when socket delivery is unavailable.

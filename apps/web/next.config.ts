@@ -21,13 +21,25 @@ const nextConfig = {
     NEXT_PUBLIC_CUSTOMER_ORIGIN: process.env.NEXT_PUBLIC_CUSTOMER_ORIGIN ?? '',
     NEXT_PUBLIC_REALTIME_URL: process.env.NEXT_PUBLIC_REALTIME_URL ?? '',
   },
-  output: 'standalone',
   reactStrictMode: true,
+  // Socket.IO polls `/socket.io/` WITH a trailing slash, and the engine only
+  // answers that exact path. Next's default trailing-slash redirect rewrote it
+  // to `/socket.io`, which the API then 404'd, so realtime never connected on a
+  // same-origin deploy. Skipping the redirect lets the rewrite below see the
+  // original path.
+  skipTrailingSlashRedirect: true,
   async rewrites() {
     return [
       {
         destination: `${apiUrl}/api/v1/:path*`,
         source: '/api/v1/:path*',
+      },
+      // socket.io handshakes on `/socket.io/`. Next's trailing-slash redirect
+      // turns that into `/socket.io`, which the `:path*` source below does not
+      // match — without this entry every handshake 404s and realtime is dead.
+      {
+        destination: `${apiUrl}/socket.io/`,
+        source: '/socket.io',
       },
       {
         destination: `${apiUrl}/socket.io/:path*`,
