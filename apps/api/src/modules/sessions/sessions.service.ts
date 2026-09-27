@@ -60,6 +60,12 @@ export class SessionsService {
     }
     await this.accessService.assertTenantActive(String(qrCode.tenantId));
 
+    const joinBranch = await this.branchModel.findById(qrCode.branchId).select('status').lean().exec();
+
+    if (!joinBranch || joinBranch.status === 'archived') {
+      throw new NotFoundException('This outlet is no longer taking orders');
+    }
+
     let session = await this.sessionModel
       .findOne({
         qrCodeId: String(qrCode._id),

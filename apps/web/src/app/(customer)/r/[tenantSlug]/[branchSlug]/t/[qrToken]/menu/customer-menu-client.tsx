@@ -88,7 +88,7 @@ export function CustomerMenuClient({
   const filteredItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return items.filter((item) => {
-      const categoryMatch = activeCategory === 'all' || item.categoryId === activeCategory || documentId(item) === activeCategory;
+      const categoryMatch = activeCategory === 'all' || item.categoryId === activeCategory;
       const dietaryMatch = dietaryFilter === 'all' || item.dietaryFlags.includes(dietaryFilter);
       const allergenMatch = allergenFilter === 'all' || !item.allergens.includes(allergenFilter);
       const textMatch =

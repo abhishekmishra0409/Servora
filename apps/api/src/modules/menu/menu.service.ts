@@ -5,6 +5,7 @@ import { Model } from 'mongoose';
 import { MenuCategory } from '../../database/schemas/menu-category.schema';
 import { MenuItem } from '../../database/schemas/menu-item.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
+import { EntitlementsService } from '../../infrastructure/entitlements/entitlements.service';
 import { RealtimePublisher } from '../../infrastructure/realtime/realtime-publisher.service';
 import { CreateCategoryDto, CreateMenuItemDto, UpdateCategoryDto, UpdateMenuItemDto } from './dto';
 
@@ -16,6 +17,7 @@ export class MenuService {
     @InjectModel(MenuCategory.name) private readonly categoryModel: Model<MenuCategory>,
     @InjectModel(MenuItem.name) private readonly itemModel: Model<MenuItem>,
     private readonly auditService: AuditService,
+    private readonly entitlements: EntitlementsService,
     private readonly realtimePublisher: RealtimePublisher,
   ) { }
 
@@ -111,6 +113,8 @@ export class MenuService {
   }
 
   async createItem(dto: CreateMenuItemDto): Promise<MenuItem> {
+    await this.entitlements.assertCanCreate(dto.tenantId, 'menuItems');
+
     const item = await this.itemModel.create({
       ...dto,
       allergens: dto.allergens ?? [],

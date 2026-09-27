@@ -53,8 +53,8 @@ export class BranchesController {
   }
 
   @Patch(':id')
-  @RequirePermissions('branches:edit')
-  @Roles(UserRole.PlatformAdmin, UserRole.Owner)
+  @RequirePermissions('branches:edit', 'settings:edit')
+  @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager)
   async update(@Param('id') id: string, @Body() dto: UpdateBranchDto, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertBranchRecordAccess(user, id);
     return this.branchesService.update(id, dto, user.sub);

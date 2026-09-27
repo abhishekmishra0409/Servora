@@ -1,6 +1,6 @@
 import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import type { StaffJwtPayload } from '@restaurent/shared';
-import { OrderStatus, UserRole } from '@restaurent/shared';
+import { isPlatformRoleKey, OrderStatus, UserRole } from '@restaurent/shared';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -9,6 +9,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { StaffJwtGuard } from '../../common/guards/staff-jwt.guard';
 import { AccessService } from '../../infrastructure/access/access.service';
+import { PermissionResolverService } from '../../infrastructure/access/permission-resolver.service';
 import { OrdersService } from './orders.service';
 
 @Controller('orders')
@@ -17,6 +18,7 @@ export class OrdersController {
   constructor(
     private readonly accessService: AccessService,
     private readonly ordersService: OrdersService,
+    private readonly permissionResolver: PermissionResolverService,
   ) {}
 
   @Get('live')
@@ -63,24 +65,31 @@ export class OrdersController {
   @RequirePermissions('orders:edit', 'orders:status-preparing', 'orders:status-ready', 'orders:status-served')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Kitchen)
   async updateStatus(@Param('id') id: string, @Body('status') status: OrderStatus, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
-    this.assertStatusActionAllowed(user.role, status);
+    await this.assertStatusActionAllowed(user, status);
     await this.accessService.assertOrderAccess(user, id);
     return this.ordersService.updateStatus(id, status, user.sub);
   }
 
-  private assertStatusActionAllowed(role: string, status: OrderStatus): void {
-    if (([UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager] as string[]).includes(role)) {
+  /**
+   * Each transition needs its own permission, so tenant-defined roles work the
+   * same as built-ins: kitchen-style roles hold status-preparing/ready, floor
+   * roles hold status-served, and orders:edit covers the rest.
+   */
+  private async assertStatusActionAllowed(user: StaffJwtPayload, status: OrderStatus): Promise<void> {
+    if (isPlatformRoleKey(user.role)) {
       return;
     }
 
-    if (role === UserRole.Kitchen && [OrderStatus.Preparing, OrderStatus.Ready].includes(status)) {
-      return;
-    }
+    const statusPermission: Partial<Record<OrderStatus, string>> = {
+      [OrderStatus.Preparing]: 'orders:status-preparing',
+      [OrderStatus.Ready]: 'orders:status-ready',
+      [OrderStatus.Served]: 'orders:status-served',
+    };
+    const required = statusPermission[status] ?? 'orders:edit';
+    const permissions = await this.permissionResolver.resolveTenantWide(user.sub, user.tenantId);
 
-    if (role === UserRole.Waiter && status === OrderStatus.Served) {
-      return;
+    if (!permissions.has(required)) {
+      throw new ForbiddenException('Order status action not allowed for role');
     }
-
-    throw new ForbiddenException('Order status action not allowed for role');
   }
 }

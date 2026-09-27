@@ -125,7 +125,6 @@ export default function MenuItemsPage() {
       media: form.imageUrl.trim() ? { alt: `${form.name} plated dish`, url: form.imageUrl.trim() } : {},
       name: form.name,
       price: Number(form.price),
-      schedules: [{ days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], endTime: '23:00', startTime: '11:00' }],
       slug: slugify(form.name),
       tenantId,
     };
@@ -134,9 +133,14 @@ export default function MenuItemsPage() {
     try {
       const wasEditing = Boolean(editingId);
       if (editingId) {
+        // Deliberately no `schedules` here: the schedules page owns dayparts,
+        // and resending a default window would wipe them on every edit.
         await updateCmsMenuItem(editingId, body, token);
       } else {
-        await createCmsMenuItem(body, token);
+        await createCmsMenuItem(
+          { ...body, schedules: [{ days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], endTime: '23:00', startTime: '11:00' }] },
+          token,
+        );
       }
       resetForm();
       await resource.reload();

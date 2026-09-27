@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { useCmsSession } from '@/components/cms-session-provider';
 import { KanbanBoard } from '@/components/kanban-board';
 import { LoadingKanban } from '@/components/loading-state';
 import { OrderTicket } from '@/components/order-ticket';
@@ -16,12 +17,13 @@ import { toneFor } from '@/lib/status-tone';
 import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 const lanes = [
-  { next: 'preparing', nextLabel: 'Start preparing', status: 'accepted', title: 'Accepted' },
-  { next: 'ready', nextLabel: 'Mark ready', status: 'preparing', title: 'Preparing' },
-  { next: 'served', nextLabel: 'Clear ticket', status: 'ready', title: 'Ready' },
+  { next: 'preparing', nextLabel: 'Start preparing', permission: 'orders:status-preparing', status: 'accepted', title: 'Accepted' },
+  { next: 'ready', nextLabel: 'Mark ready', permission: 'orders:status-ready', status: 'preparing', title: 'Preparing' },
+  { next: 'served', nextLabel: 'Clear ticket', permission: 'orders:status-served', status: 'ready', title: 'Ready' },
 ];
 
 export default function KitchenBoardPage() {
+  const { can } = useCmsSession();
   const [busy, setBusy] = useState('');
   const resource = useCmsResource<LiveOrder[]>(
     async ({ branchId, token }) =>
@@ -76,9 +78,11 @@ export default function KitchenBoardPage() {
                     <Button asChild size="sm" variant="outline">
                       <Link href={`/kitchen-board/${id}`}>View ticket</Link>
                     </Button>
-                    <Button disabled={busy === id} onClick={() => void advance(order, lane.next)} size="sm" type="button">
-                      {lane.nextLabel}
-                    </Button>
+                    {can(lane.permission) ? (
+                      <Button disabled={busy === id} onClick={() => void advance(order, lane.next)} size="sm" type="button">
+                        {lane.nextLabel}
+                      </Button>
+                    ) : null}
                   </>
                 }
                 meta={elapsedSince(order.submittedAt)}

@@ -123,15 +123,34 @@ export class EntitlementsService {
 
   async getUsage(tenantId: string): Promise<Record<EntitledResource, number>> {
     const [employees, branches, tables, monthlyBills, menuItems, customRoles] = await Promise.all([
-      this.membershipModel.countDocuments({ tenantId }).exec(),
-      this.branchModel.countDocuments({ status: { $ne: 'archived' }, tenantId }).exec(),
-      this.tableModel.countDocuments({ tenantId }).exec(),
-      this.paymentModel.countDocuments({ createdAt: { $gte: startOfMonth() }, tenantId }).exec(),
-      this.menuItemModel.countDocuments({ tenantId }).exec(),
-      this.roleModel.countDocuments({ active: true, tenantId }).exec(),
+      this.countResource(tenantId, 'employees'),
+      this.countResource(tenantId, 'branches'),
+      this.countResource(tenantId, 'tables'),
+      this.countResource(tenantId, 'monthlyBills'),
+      this.countResource(tenantId, 'menuItems'),
+      this.countResource(tenantId, 'customRoles'),
     ]);
 
     return { branches, customRoles, employees, menuItems, monthlyBills, tables };
+  }
+
+  /** One resource, one query — `assertCanCreate` sits on hot create paths. */
+  private async countResource(tenantId: string, resource: EntitledResource): Promise<number> {
+    switch (resource) {
+      case 'employees':
+        // A person with memberships at several outlets is still one staff seat.
+        return (await this.membershipModel.distinct('userId', { tenantId }).exec()).length;
+      case 'branches':
+        return this.branchModel.countDocuments({ status: { $ne: 'archived' }, tenantId }).exec();
+      case 'tables':
+        return this.tableModel.countDocuments({ tenantId }).exec();
+      case 'monthlyBills':
+        return this.paymentModel.countDocuments({ createdAt: { $gte: startOfMonth() }, tenantId }).exec();
+      case 'menuItems':
+        return this.menuItemModel.countDocuments({ tenantId }).exec();
+      case 'customRoles':
+        return this.roleModel.countDocuments({ active: true, tenantId }).exec();
+    }
   }
 
   /**
@@ -148,7 +167,7 @@ export class EntitlementsService {
       return;
     }
 
-    const used = (await this.getUsage(tenantId))[resource];
+    const used = await this.countResource(tenantId, resource);
 
     if (isLimitReached(used, limit)) {
       throw new ForbiddenException({

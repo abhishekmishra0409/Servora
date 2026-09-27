@@ -202,8 +202,9 @@ export class AuthService {
     ]);
 
     const branchIds = memberships.map((membership) => membership.branchId).filter(Boolean);
+    // Archived outlets stay out of the switcher even when a membership remains.
     const branches = await this.branchModel
-      .find({ _id: { $in: branchIds } })
+      .find({ _id: { $in: branchIds }, status: { $ne: 'archived' } })
       .select('name slug')
       .lean()
       .exec();
@@ -216,7 +217,7 @@ export class AuthService {
 
     return {
       branches: memberships
-        .filter((membership) => membership.branchId)
+        .filter((membership) => membership.branchId && branchName.has(String(membership.branchId)))
         .map((membership) => ({
           branchId: String(membership.branchId),
           name: branchName.get(String(membership.branchId)) ?? 'Outlet',
@@ -242,6 +243,12 @@ export class AuthService {
 
     if (!membership) {
       throw new UnauthorizedException('You do not have access to that outlet');
+    }
+
+    const branch = await this.branchModel.findById(branchId).select('status').lean().exec();
+
+    if (!branch || branch.status === 'archived') {
+      throw new UnauthorizedException('That outlet has been archived');
     }
 
     const account = await this.userModel.findById(user.sub).select('+refreshTokenHash').exec();
@@ -297,10 +304,25 @@ export class AuthService {
     userId: string,
     branchId?: string,
   ): Promise<MembershipDocument | null> {
-    const memberships = await this.membershipModel
+    const allMemberships = await this.membershipModel
       .find({ userId })
       .sort({ createdAt: 1, _id: 1 })
       .exec();
+
+    // A membership at an archived outlet must not open a session there.
+    const memberBranchIds = allMemberships.map((membership) => membership.branchId).filter(Boolean);
+    const archivedBranches = new Set(
+      (
+        await this.branchModel
+          .find({ _id: { $in: memberBranchIds }, status: 'archived' })
+          .select('_id')
+          .lean()
+          .exec()
+      ).map((branch) => String(branch._id)),
+    );
+    const memberships = allMemberships.filter(
+      (membership) => !membership.branchId || !archivedBranches.has(String(membership.branchId)),
+    );
 
     if (memberships.length === 0) {
       return null;

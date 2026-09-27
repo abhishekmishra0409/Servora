@@ -15,7 +15,7 @@ import { PageShell } from '@/components/page-shell';
 import { Button } from '@/components/ui/button';
 import { documentId, getCmsTenants, switchCmsBranch } from '@/lib/api-client';
 import { clearCmsSettings, readCmsSettings, writeCmsSettings } from '@/lib/cms-storage';
-import { canAccessPathWithPermissions, linksForPermissions } from '@/lib/role-access';
+import { canAccessPathWithPermissions, filterLinksByFeatures, linksForPermissions } from '@/lib/role-access';
 import { humanize } from '@/lib/status-tone';
 
 export default function CmsLayout({ children }: { children: ReactNode }): ReactNode {
@@ -102,8 +102,11 @@ function CmsChrome({ children }: { children: ReactNode }): ReactNode {
     return <PageLoading label="Checking session" />;
   }
 
-  const links = linksForPermissions(session.permissions, role);
   const isPlatformRole = ['super_admin', 'platform_admin'].includes(role);
+  const links = filterLinksByFeatures(
+    linksForPermissions(session.permissions, role),
+    isPlatformRole ? null : (session.entitlements?.features ?? null),
+  );
   const subscriptionBlocked = !isPlatformRole && tenantStatus !== '' && tenantStatus !== 'active';
   const subscriptionRecoveryPath = pathname === '/subscription' || pathname === '/settings';
   const showSubscriptionWarning = subscriptionBlocked && pathname !== '/subscription';

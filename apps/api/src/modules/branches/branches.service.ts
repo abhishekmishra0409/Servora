@@ -1,3 +1,4 @@
+import { isPlatformRoleKey } from '@restaurent/shared';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -46,11 +47,15 @@ export class BranchesService {
 
     // Give the creator a membership on the new outlet, or they would be unable
     // to open the thing they just made — assertBranchAccess is membership-based.
-    await this.membershipModel.updateOne(
-      { branchId: String(branch._id), tenantId: dto.tenantId, userId: actor.sub },
-      { $setOnInsert: { role: actor.role } },
-      { upsert: true },
-    );
+    // Platform staff bypass that check everywhere, so no tenant-side membership
+    // row is written for them (it would also inflate the employees usage count).
+    if (!isPlatformRoleKey(actor.role)) {
+      await this.membershipModel.updateOne(
+        { branchId: String(branch._id), tenantId: dto.tenantId, userId: actor.sub },
+        { $setOnInsert: { role: actor.role } },
+        { upsert: true },
+      );
+    }
 
     this.entitlements.invalidate(dto.tenantId);
     await this.auditService.record({

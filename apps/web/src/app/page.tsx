@@ -44,9 +44,6 @@ export default function HomePage() {
               <ArrowRight />
             </Link>
           </Button>
-          <Button asChild size="lg" variant="outline">
-            <Link href="/r/harbor-grill/downtown/t/qr-t1">Preview guest ordering</Link>
-          </Button>
         </div>
       </header>
 

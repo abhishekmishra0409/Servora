@@ -28,7 +28,6 @@ import {
   clearGuestSession,
   clearRecentServiceRequest,
   readGuestSession,
-  readRecentServiceRequest,
   writeGuestSession,
   writeRecentServiceRequest,
   type GuestServiceRequest,
@@ -65,11 +64,6 @@ const relativeTime = (value: string): string => {
 const titleFor = (requestType: RequestType): string => presets.find((item) => item.requestType === requestType)?.label ?? 'Custom request';
 const statusLabelFor = (requestType: RequestType): string => presets.find((item) => item.requestType === requestType)?.statusLabel ?? 'Requested';
 
-function requestMatchesActiveSession(request: GuestServiceRequest | null, nextContext: TableContext): boolean {
-  const activeTableSessionId = nextContext.tableSession?.id;
-  return Boolean(request?.tableSessionId && activeTableSessionId && request.tableSessionId === activeTableSessionId);
-}
-
 function serviceRequestSnapshot(request: CmsServiceRequest): GuestServiceRequest {
   return {
     createdAt: request.createdAt ?? new Date().toISOString(),
@@ -103,7 +97,6 @@ export default function CustomerServicePage(): ReactNode {
     getTableContext(qrToken)
       .then(async (nextContext) => {
         if (!active) return;
-        const storedRequest = readRecentServiceRequest(qrToken);
         const activeTableSessionId = nextContext.tableSession?.id;
         if (session?.tableSessionId && session.tableSessionId !== activeTableSessionId) {
           clearGuestSession(qrToken);
@@ -128,8 +121,7 @@ export default function CustomerServicePage(): ReactNode {
             writeRecentServiceRequest(qrToken, nextRequest);
             setRecentRequest(nextRequest);
           } else {
-            // A stale stored request from this or an older session is no longer open.
-            void requestMatchesActiveSession(storedRequest, nextContext);
+            // No open request on the server, so any stored one is stale.
             clearRecentServiceRequest(qrToken);
             setRecentRequest(null);
           }

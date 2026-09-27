@@ -1,6 +1,6 @@
 'use client';
 
-import type { AddonOption, MenuItem } from '@restaurent/shared';
+import type { AddonGroup, AddonOption, MenuItem } from '@restaurent/shared';
 import { ShoppingBasket } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
@@ -61,13 +61,22 @@ export function MenuItemDrawer({
     return null;
   }
 
-  function toggleAddon(groupMax: number, option: AddonOption, checked: boolean): void {
-    setSelection((current) => ({
-      ...current,
-      addons: checked
-        ? [...current.addons.filter((addon) => addon.id !== option.id), option].slice(groupMax > 0 ? -groupMax : 0)
-        : current.addons.filter((addon) => addon.id !== option.id),
-    }));
+  function toggleAddon(group: AddonGroup, option: AddonOption, checked: boolean): void {
+    setSelection((current) => {
+      const inGroup = (addon: AddonOption): boolean => group.options.some((entry) => entry.id === addon.id);
+      const otherGroups = current.addons.filter((addon) => !inGroup(addon));
+      let groupPicks = current.addons.filter((addon) => inGroup(addon) && addon.id !== option.id);
+
+      if (checked) {
+        groupPicks = [...groupPicks, option];
+        // The max applies within this group only; other groups keep their picks.
+        if (group.maxSelections > 0) {
+          groupPicks = groupPicks.slice(-group.maxSelections);
+        }
+      }
+
+      return { ...current, addons: [...otherGroups, ...groupPicks] };
+    });
   }
 
   return (
@@ -153,7 +162,7 @@ export function MenuItemDrawer({
                         key={option.id}
                       >
                         <span className="flex items-center gap-2">
-                          <Checkbox checked={checked} onCheckedChange={(next) => toggleAddon(group.maxSelections, option, next === true)} />
+                          <Checkbox checked={checked} onCheckedChange={(next) => toggleAddon(group, option, next === true)} />
                           {option.label}
                         </span>
                         <span className="tabular-nums text-muted-foreground">{option.priceDelta ? `+ ${money(option.priceDelta)}` : 'Free'}</span>

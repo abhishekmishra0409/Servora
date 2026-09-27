@@ -39,8 +39,9 @@ export default function BillsPage() {
   });
   const bills = resource.data;
   const confirm = useConfirm();
-  const { role } = useCmsSession();
-  const canCapturePayment = ['platform_admin', 'owner', 'manager', 'waiter', 'cashier'].includes(role);
+  const { can } = useCmsSession();
+  const canRequestBill = can('bills:request');
+  const canCapturePayment = can('bills:mark-paid');
   const activeBills = useMemo(() => bills.filter((bill) => bill.status !== 'captured'), [bills]);
   const completedBills = useMemo(() => bills.filter((bill) => bill.status === 'captured'), [bills]);
   const completedTotalPages = Math.max(1, Math.ceil(completedBills.length / COMPLETED_PAGE_SIZE));
@@ -200,7 +201,7 @@ export default function BillsPage() {
                       <span className="font-display text-2xl font-semibold tabular-nums">{money(bill.amount)}</span>
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {!paymentRequested ? (
+                      {canRequestBill && !paymentRequested ? (
                         <Button disabled={isBusy} onClick={() => void generateBill(bill)} type="button">
                           <ReceiptText />
                           Generate bill

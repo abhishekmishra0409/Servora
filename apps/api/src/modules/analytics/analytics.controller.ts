@@ -1,5 +1,5 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { UserRole } from '@restaurent/shared';
+import { isPlatformRoleKey, UserRole } from '@restaurent/shared';
 import type { StaffJwtPayload } from '@restaurent/shared';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -9,6 +9,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { StaffJwtGuard } from '../../common/guards/staff-jwt.guard';
 import { AccessService } from '../../infrastructure/access/access.service';
+import { EntitlementsService } from '../../infrastructure/entitlements/entitlements.service';
 import { AnalyticsService } from './analytics.service';
 
 @Controller('analytics')
@@ -18,11 +19,13 @@ export class AnalyticsController {
   constructor(
     private readonly accessService: AccessService,
     private readonly analyticsService: AnalyticsService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   @Get('overview')
   @RequirePermissions('analytics:view')
   async overview(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
+    await this.assertAnalyticsEnabled(user);
     await this.accessService.assertBranchAccess(user, branchId);
     return this.analyticsService.overview(branchId);
   }
@@ -30,7 +33,14 @@ export class AnalyticsController {
   @Get('menu')
   @RequirePermissions('analytics:view')
   async menu(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
+    await this.assertAnalyticsEnabled(user);
     await this.accessService.assertBranchAccess(user, branchId);
     return this.analyticsService.menu(branchId);
+  }
+
+  private async assertAnalyticsEnabled(user: StaffJwtPayload): Promise<void> {
+    if (!isPlatformRoleKey(user.role)) {
+      await this.entitlements.assertFeature(user.tenantId, 'analytics');
+    }
   }
 }

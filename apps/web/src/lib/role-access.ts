@@ -45,6 +45,28 @@ export const platformNavLinks: AppNavLink[] = [
 
 export const viewPermission = (screen: string): string => `${screen}:view`;
 
+/** Screens that a plan feature flag can switch off for a whole tenant. */
+const FEATURE_GATED_SCREENS: Record<string, string> = {
+  analytics: 'analytics',
+  'audit-logs': 'audit_logs',
+};
+
+/**
+ * Drops links whose plan feature is disabled. `features` is null while the
+ * entitlements are unknown (platform staff, or before the session loads), in
+ * which case nothing is hidden — the API still enforces the flag.
+ */
+export function filterLinksByFeatures(links: AppNavLink[], features: readonly string[] | null): AppNavLink[] {
+  if (!features) {
+    return links;
+  }
+
+  return links.filter((link) => {
+    const feature = FEATURE_GATED_SCREENS[link.screen];
+    return !feature || features.includes(feature);
+  });
+}
+
 export function linksForPermissions(permissions: ReadonlySet<string>, role: string): AppNavLink[] {
   if (isPlatformRoleKey(role)) {
     return platformNavLinks;
