@@ -4,6 +4,7 @@ import { Eye, EyeOff, Pencil, Plus, Save, Search, Trash2, UtensilsCrossed } from
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
+import { useCmsSession } from '@/components/cms-session-provider';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { FormActions, FormField, FormGrid } from '@/components/form-field';
@@ -48,6 +49,11 @@ const emptyForm = {
 };
 
 export default function MenuItemsPage() {
+  const { can } = useCmsSession();
+  const canAdd = can('menu-items:add');
+  const canEdit = can('menu-items:edit');
+  const canDelete = can('menu-items:delete');
+  const canUpload = can('menu-items:upload-media');
   const resource = useCmsResource<{ categories: CmsMenuCategory[]; items: CmsMenuItem[] }>(
     async ({ branchId, tenantId, token }) => {
       const [items, categories] = await Promise.all([getCmsMenuItems(branchId, token), getCmsMenuCategories(tenantId, branchId)]);
@@ -242,6 +248,7 @@ export default function MenuItemsPage() {
       resource={resource}
       what="the menu"
     >
+      {canAdd || canEdit ? (
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
         <SectionCard
           actions={
@@ -306,13 +313,14 @@ export default function MenuItemsPage() {
             Available to guests
           </label>
           <FormActions>
-            <Button disabled={uploading || saving} onClick={() => void submit()} type="button">
+            <Button disabled={uploading || saving || (editingId ? !canEdit : !canAdd)} onClick={() => void submit()} type="button">
               {editingId ? <Save /> : <Plus />}
               {editingId ? 'Update item' : 'Create item'}
             </Button>
           </FormActions>
         </SectionCard>
 
+        {canUpload ? (
         <SectionCard
           actions={<Badge variant={form.imageUrl ? 'success' : 'secondary'}>{form.imageUrl ? 'Ready' : 'Optional'}</Badge>}
           title="Dish photo"
@@ -326,7 +334,9 @@ export default function MenuItemsPage() {
             onFile={(file) => void uploadImage(file)}
           />
         </SectionCard>
+        ) : null}
       </section>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-0 flex-1 sm:max-w-sm">
@@ -387,10 +397,13 @@ export default function MenuItemsPage() {
                     </div>
                   ) : null}
                   <div className="flex flex-wrap gap-2">
-                    <Button onClick={() => edit(item)} size="sm" type="button" variant="outline">
-                      <Pencil />
-                      Edit
-                    </Button>
+                    {canEdit ? (
+                      <Button onClick={() => edit(item)} size="sm" type="button" variant="outline">
+                        <Pencil />
+                        Edit
+                      </Button>
+                    ) : null}
+                    {canDelete ? (
                     <ConfirmDialog
                       confirmLabel="Delete item"
                       description={`${item.name} will disappear from the guest menu right away.`}
@@ -404,6 +417,7 @@ export default function MenuItemsPage() {
                         </Button>
                       }
                     />
+                    ) : null}
                   </div>
                 </div>
               </Card>

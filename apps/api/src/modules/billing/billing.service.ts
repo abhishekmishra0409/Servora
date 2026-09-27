@@ -469,10 +469,20 @@ export class BillingService {
     if (!tenantId || tenantId === 'unknown') {
       return;
     }
-    const healthySubscriptionFilter: Record<string, unknown> = {
+    const anySubscriptionFilter: Record<string, unknown> = {
       provider: 'stripe',
-      status: { $in: [...healthySubscriptionStatuses] },
       ...this.tenantSubscriptionFilter(tenantId),
+    };
+    const hasSubscriptions = await this.subscriptionModel.exists(anySubscriptionFilter).exec();
+    if (!hasSubscriptions) {
+      // No billing records to reconcile against: the tenant is manually
+      // provisioned (trial, demo, platform-managed), so the status the
+      // platform admin set stands instead of being forced to 'suspended'.
+      return;
+    }
+    const healthySubscriptionFilter: Record<string, unknown> = {
+      ...anySubscriptionFilter,
+      status: { $in: [...healthySubscriptionStatuses] },
     };
     const healthySubscription = await this.subscriptionModel.exists(healthySubscriptionFilter).exec();
     const nextTenantStatus = healthySubscription ? 'active' : 'suspended';

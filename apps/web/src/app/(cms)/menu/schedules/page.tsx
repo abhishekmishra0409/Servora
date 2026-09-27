@@ -4,6 +4,7 @@ import { CalendarClock, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { useCmsSession } from '@/components/cms-session-provider';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { FormActions, FormField, FormGrid } from '@/components/form-field';
@@ -21,6 +22,8 @@ import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 const allDays = 'mon, tue, wed, thu, fri, sat, sun';
 
 export default function MenuSchedulesPage() {
+  const { can } = useCmsSession();
+  const canEdit = can('menu-schedules:edit');
   const [editingId, setEditingId] = useState('');
   const [form, setForm] = useState({ available: true, days: allDays, endTime: '23:00', startTime: '11:00' });
   const [saving, setSaving] = useState(false);
@@ -82,6 +85,7 @@ export default function MenuSchedulesPage() {
       title="Schedules"
     >
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
+        {canEdit ? (
         <SectionCard
           actions={
             editingId ? (
@@ -118,6 +122,7 @@ export default function MenuSchedulesPage() {
             </Button>
           </FormActions>
         </SectionCard>
+        ) : null}
 
         <SectionCard contentClassName="space-y-0" title={resource.status === 'loading' ? 'Dishes' : `${items.length} dishes`}>
           <DataTable
@@ -146,12 +151,13 @@ export default function MenuSchedulesPage() {
                 className: 'text-right',
                 header: '',
                 key: 'actions',
-                render: (item) => (
-                  <Button onClick={() => edit(item)} size="sm" type="button" variant="outline">
-                    <Pencil />
-                    Edit
-                  </Button>
-                ),
+                render: (item) =>
+                  canEdit ? (
+                    <Button onClick={() => edit(item)} size="sm" type="button" variant="outline">
+                      <Pencil />
+                      Edit
+                    </Button>
+                  ) : null,
               },
             ]}
             empty={<EmptyState compact description="Create dishes on the menu items page first." icon={CalendarClock} title="No dishes to schedule" />}

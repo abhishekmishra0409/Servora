@@ -6,13 +6,13 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import { BrandLogo } from '@/components/brand-logo';
-import { Icon } from '@/components/icon';
 import { OutletSwitcher } from '@/components/outlet-switcher';
+import { SidebarNav } from '@/components/sidebar-nav';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { CmsSessionBranch } from '@/lib/api-client';
-import type { AppNavLink } from '@/lib/role-access';
+import { navGroupsFor, type AppNavLink } from '@/lib/role-access';
 import { humanize } from '@/lib/status-tone';
 import { cn } from '@/lib/utils';
 
@@ -31,39 +31,6 @@ export interface AppShellProps {
   restaurantName?: string | undefined;
   role: string;
   switching: boolean;
-}
-
-function isActive(pathname: string, href: string): boolean {
-  if (href === '/super-admin') {
-    return pathname === href;
-  }
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
-function SidebarNav({ links, pathname }: { links: AppNavLink[]; pathname: string }): ReactNode {
-  return (
-    <nav aria-label="Workspace navigation" className="grid gap-0.5 px-3 py-3">
-      {links.map((link) => {
-        const active = isActive(pathname, link.href);
-        return (
-          <Link
-            aria-current={active ? 'page' : undefined}
-            className={cn(
-              'relative flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-sidebar-foreground/80 transition-colors',
-              'hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-              active && 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground',
-            )}
-            href={link.href}
-            key={link.href}
-          >
-            {active ? <span aria-hidden="true" className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-sidebar-primary" /> : null}
-            <Icon className={cn('size-4.5 shrink-0', active ? 'text-sidebar-primary' : 'text-muted-foreground')} name={link.icon} />
-            <span className="truncate">{link.label}</span>
-          </Link>
-        );
-      })}
-    </nav>
-  );
 }
 
 function SidebarContext({
@@ -171,7 +138,7 @@ export function AppShell({
         {context}
       </div>
       <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <SidebarNav links={links} pathname={pathname} />
+        <SidebarNav groups={navGroupsFor(role)} links={links} pathname={pathname} />
       </div>
       <AccountRow onLogout={onLogout} role={role} />
     </>

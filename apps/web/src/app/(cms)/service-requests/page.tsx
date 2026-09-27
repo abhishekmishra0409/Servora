@@ -4,6 +4,7 @@ import { BellRing, Check } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { useCmsSession } from '@/components/cms-session-provider';
 import { EmptyState } from '@/components/empty-state';
 import { LoadingRows } from '@/components/loading-state';
 import { PageShell } from '@/components/page-shell';
@@ -17,6 +18,8 @@ import { humanize } from '@/lib/status-tone';
 import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 export default function ServiceRequestsPage() {
+  const { can } = useCmsSession();
+  const canResolve = can('service-requests:resolve');
   const [busy, setBusy] = useState('');
   const resource = useCmsResource<CmsServiceRequest[]>(({ branchId, token }) => getCmsServiceRequests(branchId, token), {
     events: ['service_request.created', 'service_request.resolved'],
@@ -65,10 +68,12 @@ export default function ServiceRequestsPage() {
                     <p className="text-xs text-muted-foreground">{request.message ?? `Table ···${shortId(request.tableId)}`}</p>
                   </div>
                   <StatusBadge kind="service" value={request.status} />
-                  <Button disabled={busy === id} onClick={() => void resolve(request)} size="sm" type="button">
-                    <Check />
-                    Resolve
-                  </Button>
+                  {canResolve ? (
+                    <Button disabled={busy === id} onClick={() => void resolve(request)} size="sm" type="button">
+                      <Check />
+                      Resolve
+                    </Button>
+                  ) : null}
                 </li>
               );
             })}

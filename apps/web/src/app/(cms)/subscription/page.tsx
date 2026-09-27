@@ -41,7 +41,8 @@ const formatLimit = (value?: number, label = ''): string => {
 };
 
 export default function SubscriptionPage() {
-  const { entitlements } = useCmsSession();
+  const { can, entitlements } = useCmsSession();
+  const canManage = can('subscription:manage');
   const [busy, setBusy] = useState(false);
   const resource = useCmsResource<CmsBillingSummary | null>(({ tenantId, token }) => getCmsBillingSummary(tenantId, token), {
     initial: null,
@@ -97,10 +98,12 @@ export default function SubscriptionPage() {
                 Choose a plan below or update the payment method for the current Stripe subscription.
               </p>
             </div>
-            <Button disabled={busy || !summary?.subscription} onClick={() => void openCustomerPortal()} type="button">
-              <CreditCard />
-              Update payment method
-            </Button>
+            {canManage ? (
+              <Button disabled={busy || !summary?.subscription} onClick={() => void openCustomerPortal()} type="button">
+                <CreditCard />
+                Update payment method
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}
@@ -128,10 +131,12 @@ export default function SubscriptionPage() {
             {summary?.plan ? `${money(summary.plan.monthlyPrice)} / month` : 'No active plan'}
           </p>
           <p className="text-sm text-muted-foreground">{summary?.plan?.name ?? 'Choose a plan to activate this restaurant.'}</p>
-          <Button disabled={busy || !summary?.subscription} onClick={() => void openCustomerPortal()} type="button" variant="outline">
-            <CreditCard />
-            Update payment method
-          </Button>
+          {canManage ? (
+            <Button disabled={busy || !summary?.subscription} onClick={() => void openCustomerPortal()} type="button" variant="outline">
+              <CreditCard />
+              Update payment method
+            </Button>
+          ) : null}
         </SectionCard>
         <SectionCard title="Billing provider">
           <dl className="grid gap-2 text-sm">
@@ -193,9 +198,11 @@ export default function SubscriptionPage() {
                       </li>
                     ))}
                   </ul>
-                  <Button className="mt-auto" disabled={busy || !plan.active} onClick={() => void openCheckout(plan)} type="button" variant={featured ? 'default' : 'outline'}>
-                    {current ? 'Keep or change in Stripe' : 'Subscribe with Stripe'}
-                  </Button>
+                  {canManage ? (
+                    <Button className="mt-auto" disabled={busy || !plan.active} onClick={() => void openCheckout(plan)} type="button" variant={featured ? 'default' : 'outline'}>
+                      {current ? 'Keep or change in Stripe' : 'Subscribe with Stripe'}
+                    </Button>
+                  ) : null}
                 </CardContent>
               </Card>
             );
