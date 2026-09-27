@@ -1,8 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { ShoppingBasket, Trash2 } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
 
+import { CartBar } from '@/components/cart-bar';
+import { CustomerHeading, CustomerPage } from '@/components/customer-page';
+import { EmptyState } from '@/components/empty-state';
+import { ErrorState, NoticeBanner } from '@/components/error-state';
+import { LoadingRows } from '@/components/loading-state';
+import { QuantityStepper } from '@/components/quantity-stepper';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import {
   ApiError,
   getTableContext,
@@ -14,10 +25,8 @@ import {
 } from '@/lib/api-client';
 import { useCustomerRoute } from '@/lib/customer-route';
 import { clearGuestSession, readGuestSession, writeSubmittedOrder } from '@/lib/customer-storage';
+import { money } from '@/lib/format';
 import { createSocketClient } from '@/lib/socket';
-
-const money = (value: number): string =>
-  new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
 
 export function CustomerBucketClient({
   initialContext,
@@ -27,53 +36,45 @@ export function CustomerBucketClient({
   initialContext: TableContext | null;
   initialError?: string;
   initialGuest: GuestSession | null;
-}) {
+}): ReactNode {
   const router = useRouter();
   const { basePath, qrToken } = useCustomerRoute();
   const [context, setContext] = useState<TableContext | null>(initialContext);
   const [guest, setGuest] = useState<GuestSession | null>(initialGuest);
   const [busy, setBusy] = useState('');
-  const [notice, setNotice] = useState(
-    initialContext ? (initialContext.tableSession ? '' : 'Join the table before building a bucket.') : initialError || 'Loading bucket...',
-  );
+  const [loading, setLoading] = useState(!initialContext && !initialError);
   const [error, setError] = useState(initialError);
 
   async function refresh(): Promise<void> {
     if (!qrToken) {
-      setNotice('This customer URL is missing a QR token.');
-      setError('Open a full table URL like /r/{tenant}/{branch}/t/{qrToken}.');
+      setError('Open a full table link like /r/{tenant}/{branch}/t/{qrToken}.');
       return;
     }
-
-    const nextContext = await getTableContext(qrToken);
-    setContext(nextContext);
-    setNotice(nextContext.tableSession ? '' : 'Join the table before building a bucket.');
+    setContext(await getTableContext(qrToken));
   }
 
   useEffect(() => {
     if (!qrToken) {
-      setNotice('This customer URL is missing a QR token.');
-      setError('Open a full table URL like /r/{tenant}/{branch}/t/{qrToken}.');
+      setError('Open a full table link like /r/{tenant}/{branch}/t/{qrToken}.');
+      setLoading(false);
       return;
     }
 
     let active = true;
     const storedGuest = readGuestSession(qrToken) ?? initialGuest;
     setGuest(storedGuest);
-    refresh().catch((nextError: Error) => {
-      if (!active) {
-        return;
-      }
-      setError(nextError.message);
-      setNotice('Bucket could not be loaded.');
-    });
+    refresh()
+      .catch((nextError: Error) => {
+        if (active) setError(nextError.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
 
     const socket = storedGuest?.guestToken ? createSocketClient(storedGuest.guestToken) : null;
     ['bucket.item_added', 'bucket.item_updated', 'bucket.item_removed', 'order.created', 'payment.status_updated'].forEach((event) => {
       socket?.on(event, () => {
-        if (active) {
-          void refresh();
-        }
+        if (active) void refresh();
       });
     });
     socket?.connect();
@@ -88,29 +89,27 @@ export function CustomerBucketClient({
     if (nextError instanceof ApiError && nextError.status === 401 && qrToken) {
       clearGuestSession(qrToken);
       setGuest(null);
-      setError('Your table session expired. Join the table again.');
-      if (basePath) {
-        router.push(basePath);
-      }
+      toast.error('Your table session expired. Join the table again.');
+      if (basePath) router.push(basePath);
       return;
     }
+    toast.error(nextError instanceof Error ? nextError.message : fallback);
+  }
 
-    setError(nextError instanceof Error ? nextError.message : fallback);
+  function requireSession(): string | null {
+    const tableSessionId = context?.tableSession?.id ?? guest?.tableSessionId;
+    if (!guest?.guestToken || !tableSessionId) {
+      toast.error('Join the table before editing the bucket.');
+      if (basePath) router.push(basePath);
+      return null;
+    }
+    return tableSessionId;
   }
 
   async function changeQuantity(itemId: string, quantity: number): Promise<void> {
-    const tableSessionId = context?.tableSession?.id ?? guest?.tableSessionId;
-
-    if (!guest?.guestToken || !tableSessionId) {
-      setError('Join the table before editing the bucket.');
-      if (basePath) {
-        router.push(basePath);
-      }
-      return;
-    }
-
+    const tableSessionId = requireSession();
+    if (!tableSessionId || !guest) return;
     setBusy(itemId);
-    setError('');
     try {
       await updateBucketItem(tableSessionId, itemId, guest.guestToken, { quantity });
       await refresh();
@@ -122,18 +121,9 @@ export function CustomerBucketClient({
   }
 
   async function removeLine(itemId: string): Promise<void> {
-    const tableSessionId = context?.tableSession?.id ?? guest?.tableSessionId;
-
-    if (!guest?.guestToken || !tableSessionId) {
-      setError('Join the table before editing the bucket.');
-      if (basePath) {
-        router.push(basePath);
-      }
-      return;
-    }
-
+    const tableSessionId = requireSession();
+    if (!tableSessionId || !guest) return;
     setBusy(itemId);
-    setError('');
     try {
       await removeBucketItem(tableSessionId, itemId, guest.guestToken);
       await refresh();
@@ -145,34 +135,23 @@ export function CustomerBucketClient({
   }
 
   async function handleSubmit(): Promise<void> {
-    const tableSessionId = context?.tableSession?.id ?? guest?.tableSessionId;
+    const tableSessionId = requireSession();
     const currentBucket = context?.tableSession?.bucket;
-
-    if (!guest?.guestToken || !tableSessionId) {
-      setError('Join the table before submitting.');
-      if (basePath) {
-        router.push(basePath);
-      }
-      return;
-    }
+    if (!tableSessionId || !guest) return;
     if (!qrToken || !basePath) {
-      setError('This customer URL is missing a QR token.');
+      toast.error('This table link is missing its QR token.');
       return;
     }
     if (!currentBucket?.items.length) {
-      setError('Add at least one item before submitting.');
+      toast.error('Add at least one item before submitting.');
       return;
     }
 
     setBusy('submit');
-    setError('');
     try {
-      const order = await submitBucket(
-        tableSessionId,
-        guest.guestToken,
-        `bucket-${tableSessionId}-${currentBucket.version}`,
-      );
+      const order = await submitBucket(tableSessionId, guest.guestToken, `bucket-${tableSessionId}-${currentBucket.version}`);
       writeSubmittedOrder(qrToken, order);
+      toast.success('Order sent to the kitchen');
       router.push(`${basePath}/status`);
     } catch (nextError) {
       handleSessionError(nextError, 'Could not submit the bucket.');
@@ -182,113 +161,113 @@ export function CustomerBucketClient({
   }
 
   const bucket = context?.tableSession?.bucket;
+  const lineCount = bucket?.items.reduce((total, line) => total + line.quantity, 0) ?? 0;
+  const hasSession = Boolean(context?.tableSession);
 
   return (
-    <main className="customer-main customer-main--mobile">
-      <section className="customer-header">
-        <div>
-          <h1>Your Bucket</h1>
-          <p className="muted">{context ? `Table ${context.table.tableNo}` : 'Shared Bucket'}</p>
-        </div>
-        <a className="button-secondary" href={`${basePath}/menu`}>
-          Back to Menu
-        </a>
-      </section>
+    <CustomerPage hasCartBar={lineCount > 0}>
+      <CustomerHeading
+        action={
+          <Button asChild size="sm" variant="outline">
+            <Link href={`${basePath}/menu`}>Add more</Link>
+          </Button>
+        }
+        description={context ? `Table ${context.table.tableNo} · shared by everyone at the table` : undefined}
+        title="Your bucket"
+      />
 
-      <section className="customer-panel customer-summary-banner">
-        <div>
-          <span className="eyebrow">Review</span>
-          <h2>Your Bucket</h2>
-          <p className="muted">Review your items before submitting.</p>
-        </div>
-        <p className="muted customer-summary-banner__note">{bucket?.items.length ? `${bucket.items.length} item${bucket.items.length === 1 ? '' : 's'} ready` : 'No items added yet.'}</p>
-      </section>
-
-      {notice ? <p className="notice-text">{notice}</p> : null}
-      {error ? <p className="error-text">{error}</p> : null}
-
-      {!bucket?.items.length ? (
-        <section className="customer-panel customer-empty-state">
-          <h2>Your bucket is empty</h2>
-          <p className="muted">Add dishes from the menu to build your order.</p>
-          <a className="button-link" href={`${basePath}/menu`}>
-            Browse Menu
-          </a>
-        </section>
+      {error ? <ErrorState message={error} onRetry={() => void refresh()} /> : null}
+      {!loading && context && !hasSession ? (
+        <NoticeBanner>
+          Join the table before building a bucket.{' '}
+          <Link className="font-semibold underline" href={basePath || '/'}>
+            Join now
+          </Link>
+        </NoticeBanner>
       ) : null}
 
-      <section className="bucket-list">
-        {bucket?.items.map((item) => {
-          const unitPrice =
-            item.price +
-            (item.variantPriceDelta ?? 0) +
-            item.addons.reduce((total, addon) => total + addon.priceDelta, 0);
-          return (
-            <article className="line-card" key={item.id}>
-              <div>
-                <h2>{item.name}</h2>
-                <p className="muted">
-                  {[item.variantLabel, ...item.addons.map((addon) => addon.label), item.notes]
-                    .filter(Boolean)
-                    .join(' - ') || 'No modifiers'}
-                </p>
-              </div>
-              <div className="quantity-row">
-                <button
-                  disabled={busy === item.id}
-                  onClick={() => void changeQuantity(item.id, Math.max(1, item.quantity - 1))}
-                  type="button"
-                >
-                  <span className="material-symbols-outlined">remove</span>
-                </button>
-                <span>{item.quantity}</span>
-                <button
-                  disabled={busy === item.id}
-                  onClick={() => void changeQuantity(item.id, item.quantity + 1)}
-                  type="button"
-                >
-                  <span className="material-symbols-outlined">add</span>
-                </button>
-              </div>
-              <strong>{money(unitPrice * item.quantity)}</strong>
-              <button className="danger-button" disabled={busy === item.id} onClick={() => void removeLine(item.id)} type="button">
-                <span className="material-symbols-outlined">delete</span>
-                Remove
-              </button>
-            </article>
-          );
-        })}
-      </section>
+      {loading ? (
+        <LoadingRows count={3} />
+      ) : !bucket?.items.length ? (
+        <EmptyState
+          action={
+            <Button asChild>
+              <Link href={`${basePath}/menu`}>Browse menu</Link>
+            </Button>
+          }
+          description="Dishes everyone adds from the menu show up here."
+          icon={ShoppingBasket}
+          title="Your bucket is empty"
+        />
+      ) : (
+        <>
+          <ul className="space-y-3">
+            {bucket.items.map((item) => {
+              const unitPrice = item.price + (item.variantPriceDelta ?? 0) + item.addons.reduce((total, addon) => total + addon.priceDelta, 0);
+              const modifiers = [item.variantLabel, ...item.addons.map((addon) => addon.label), item.notes].filter(Boolean).join(' · ');
+              const isBusy = busy === item.id;
+              return (
+                <li key={item.id}>
+                  <Card className="gap-3 px-4 py-3 shadow-card">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">{modifiers || 'No modifiers'}</p>
+                      </div>
+                      <span className="shrink-0 font-semibold tabular-nums">{money(unitPrice * item.quantity)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <QuantityStepper
+                        disabled={isBusy}
+                        onChange={(quantity) => void changeQuantity(item.id, quantity)}
+                        size="sm"
+                        value={item.quantity}
+                      />
+                      <Button
+                        aria-label={`Remove ${item.name}`}
+                        className="text-destructive hover:text-destructive"
+                        disabled={isBusy}
+                        onClick={() => void removeLine(item.id)}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Trash2 />
+                        Remove
+                      </Button>
+                    </div>
+                  </Card>
+                </li>
+              );
+            })}
+          </ul>
 
-      <section className="total-bar">
-        <div>
-          <span className="muted">Subtotal</span>
-          <strong>{money(bucket?.totals.subtotal ?? 0)}</strong>
-        </div>
-        <div>
-          <span className="muted">Tax</span>
-          <strong>{money(bucket?.totals.taxTotal ?? 0)}</strong>
-        </div>
-        <div>
-          <span className="muted">Total</span>
-          <strong>{money(bucket?.totals.grandTotal ?? 0)}</strong>
-        </div>
-        <button
-          className="customer-submit"
-          disabled={busy === 'submit' || !bucket?.items.length}
-          onClick={() => void handleSubmit()}
-          type="button"
-        >
-          {busy === 'submit' ? (
-            'Submitting...'
-          ) : (
-            <>
-              Submit Order
-              <span className="material-symbols-outlined">send</span>
-            </>
-          )}
-        </button>
-      </section>
-    </main>
+          <Card className="gap-2 px-4 py-3 shadow-card">
+            <dl className="space-y-1.5 text-sm">
+              <div className="flex justify-between text-muted-foreground">
+                <dt>Subtotal</dt>
+                <dd className="tabular-nums">{money(bucket.totals.subtotal)}</dd>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <dt>Tax</dt>
+                <dd className="tabular-nums">{money(bucket.totals.taxTotal)}</dd>
+              </div>
+              <div className="flex justify-between border-t pt-2 text-base font-semibold">
+                <dt>Total</dt>
+                <dd className="tabular-nums">{money(bucket.totals.grandTotal)}</dd>
+              </div>
+            </dl>
+          </Card>
+        </>
+      )}
+
+      <CartBar
+        count={lineCount}
+        disabled={busy === 'submit'}
+        label={busy === 'submit' ? 'Sending order' : 'Submit order'}
+        onClick={() => void handleSubmit()}
+        total={bucket?.totals.grandTotal ?? 0}
+      />
+    </CustomerPage>
   );
 }

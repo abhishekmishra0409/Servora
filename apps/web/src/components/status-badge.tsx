@@ -22,7 +22,7 @@ export function StatusBadge({
   className?: string;
   kind: StatusKind;
   /** Override the humanized value. */
-  label?: string;
+  label?: string | undefined;
   value: string;
 }): ReactNode {
   return (

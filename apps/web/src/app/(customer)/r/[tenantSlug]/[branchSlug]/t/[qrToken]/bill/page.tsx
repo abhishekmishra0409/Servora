@@ -1,17 +1,20 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { ConciergeBell, MessageSquareHeart, ReceiptText } from 'lucide-react';
 import Link from 'next/link';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { PageShell } from '@/components/page-shell';
-import {
-  getPublicOrderPayment,
-  getPublicOrders,
-  type OrderStatusSnapshot,
-  type PaymentSnapshot,
-} from '@/lib/api-client';
+import { CustomerHeading, CustomerPage } from '@/components/customer-page';
+import { EmptyState } from '@/components/empty-state';
+import { ErrorState } from '@/components/error-state';
+import { LoadingRows } from '@/components/loading-state';
+import { StatusBadge } from '@/components/status-badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { getPublicOrderPayment, getPublicOrders, type OrderStatusSnapshot, type PaymentSnapshot } from '@/lib/api-client';
 import { useCustomerRoute } from '@/lib/customer-route';
 import { readGuestSession } from '@/lib/customer-storage';
+import { money } from '@/lib/format';
 import { formatOrderNumber } from '@/lib/order-number';
 import { createSocketClient } from '@/lib/socket';
 
@@ -20,38 +23,28 @@ type BillRow = {
   payment: PaymentSnapshot | null;
 };
 
-const money = (value: number): string =>
-  new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
-
-const statusLabel = (value?: string): string => (value ? value.replaceAll('_', ' ') : 'awaiting bill');
-
-export default function CustomerBillPage() {
+export default function CustomerBillPage(): ReactNode {
   const { basePath, qrToken } = useCustomerRoute();
   const [rows, setRows] = useState<BillRow[]>([]);
-  const [message, setMessage] = useState('Loading bill status...');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const totals = useMemo(() => {
     const total = rows.reduce((sum, row) => sum + row.order.grandTotal, 0);
     const capturedPayments = new Map<string, PaymentSnapshot>();
-
     for (const row of rows) {
       if (row.payment?.status === 'captured') {
         capturedPayments.set(row.payment.id ?? row.payment._id ?? row.order.id, row.payment);
       }
     }
-
     const paid = [...capturedPayments.values()].reduce((sum, payment) => sum + payment.amount, 0);
-
-    return {
-      due: Math.max(total - paid, 0),
-      paid,
-      total,
-    };
+    return { due: Math.max(total - paid, 0), paid, total };
   }, [rows]);
 
   useEffect(() => {
     if (!qrToken) {
-      setMessage('This customer URL is missing a QR token.');
+      setError('Open a full table link like /r/{tenant}/{branch}/t/{qrToken}.');
+      setLoading(false);
       return;
     }
 
@@ -59,21 +52,17 @@ export default function CustomerBillPage() {
     const load = (): void => {
       void getPublicOrders(qrToken)
         .then(async (orders) => {
-          const payments = await Promise.all(
-            orders.map((order) => getPublicOrderPayment(order.id, qrToken).catch(() => null)),
-          );
-          if (!active) {
-            return;
-          }
-
+          const payments = await Promise.all(orders.map((order) => getPublicOrderPayment(order.id, qrToken).catch(() => null)));
+          if (!active) return;
           setRows(orders.map((order, index) => ({ order, payment: payments[index] ?? null })));
-          setMessage(orders.length ? '' : 'No submitted orders yet.');
+          setError('');
         })
-        .catch((error: unknown) => {
-          if (!active) {
-            return;
-          }
-          setMessage(error instanceof Error ? error.message : 'Could not load bill status.');
+        .catch((nextError: unknown) => {
+          if (!active) return;
+          setError(nextError instanceof Error ? nextError.message : 'Could not load bill status.');
+        })
+        .finally(() => {
+          if (active) setLoading(false);
         });
     };
 
@@ -93,64 +82,81 @@ export default function CustomerBillPage() {
     };
   }, [qrToken]);
 
+  const settled = rows.length > 0 && totals.due === 0;
+
   return (
-    <PageShell
-      eyebrow="Bill"
-      title="Bill and payment status"
-      description="See every submitted order, current settlement state, and the remaining table balance."
-    >
-      {message ? <p className="notice-text">{message}</p> : null}
+    <CustomerPage>
+      <CustomerHeading description="Every order on this table and what is still to pay." title="Your bill" />
 
-      <section className="card-grid">
-        <article className="card kpi">
-          <strong>{money(totals.total)}</strong>
-          <span className="muted">Table total</span>
-        </article>
-        <article className="card kpi">
-          <strong>{money(totals.paid)}</strong>
-          <span className="muted">Paid</span>
-        </article>
-        <article className="card kpi">
-          <strong>{money(totals.due)}</strong>
-          <span className="muted">Due</span>
-        </article>
-      </section>
+      {error ? <ErrorState message={error} /> : null}
 
-      <section className="panel">
-        <div className="cms-list">
-          {rows.map(({ order, payment }) => (
-            <div className="cms-list-row" key={order.id}>
-              <span aria-hidden="true" className="material-symbols-outlined">
-                receipt_long
-              </span>
-              <div>
-                <strong>{formatOrderNumber(order.orderNo)}</strong>
-                <p className="muted">
-                  {order.items.length} items - order {statusLabel(order.status)} - payment {statusLabel(payment?.status)}
-                </p>
-              </div>
-              <strong>{money(order.grandTotal)}</strong>
-            </div>
-          ))}
-        </div>
-      </section>
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          ['Table total', totals.total, 'text-foreground'],
+          ['Paid', totals.paid, 'text-success'],
+          ['Due', totals.due, totals.due > 0 ? 'text-primary' : 'text-success'],
+        ].map(([label, value, tone]) => (
+          <Card className="gap-1 px-3 py-3 shadow-card" key={label as string}>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className={`font-display text-lg font-semibold tabular-nums ${tone as string}`}>{money(value as number)}</p>
+          </Card>
+        ))}
+      </div>
 
-      {basePath ? (
-        <div className="action-row">
-          <Link href={`${basePath}/service`}>
-            <span aria-hidden="true" className="material-symbols-outlined">
-              front_hand
-            </span>
-            Request bill help
-          </Link>
-          <Link href={`${basePath}/status`}>
-            <span aria-hidden="true" className="material-symbols-outlined">
-              receipt_long
-            </span>
-            Order status
-          </Link>
+      {loading ? (
+        <LoadingRows count={3} />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          action={
+            <Button asChild>
+              <Link href={`${basePath}/menu`}>Browse menu</Link>
+            </Button>
+          }
+          description="Orders you submit will be totalled here."
+          icon={ReceiptText}
+          title="No orders yet"
+        />
+      ) : (
+        <Card className="gap-0 px-4 py-1 shadow-card">
+          <ul className="divide-y">
+            {rows.map(({ order, payment }) => (
+              <li className="flex items-center gap-3 py-3" key={order.id}>
+                <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+                  <ReceiptText aria-hidden="true" className="size-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold">{formatOrderNumber(order.orderNo)}</p>
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <span className="text-xs text-muted-foreground">{order.items.length} items</span>
+                    <StatusBadge className="text-[10px]" kind="order" value={order.status} />
+                    <StatusBadge className="text-[10px]" kind="payment" label={payment?.status ? undefined : 'Bill not requested'} value={payment?.status ?? 'pending'} />
+                  </div>
+                </div>
+                <span className="shrink-0 text-sm font-semibold tabular-nums">{money(order.grandTotal)}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {rows.length > 0 ? (
+        <div className="grid gap-2">
+          {!settled ? (
+            <Button asChild className="h-12" size="lg">
+              <Link href={`${basePath}/service`}>
+                <ConciergeBell />
+                Ask for the bill
+              </Link>
+            </Button>
+          ) : null}
+          <Button asChild className="h-12" size="lg" variant={settled ? 'default' : 'outline'}>
+            <Link href={`${basePath}/feedback`}>
+              <MessageSquareHeart />
+              Leave feedback
+            </Link>
+          </Button>
         </div>
       ) : null}
-    </PageShell>
+    </CustomerPage>
   );
 }

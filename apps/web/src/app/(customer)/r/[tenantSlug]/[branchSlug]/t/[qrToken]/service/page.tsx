@@ -1,7 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { ArrowRight, CircleCheck, GlassWater, Hand, ReceiptText, Send, Utensils, type LucideIcon } from 'lucide-react';
+import Link from 'next/link';
+import { useEffect, useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
 
+import { CustomerHeading, CustomerPage } from '@/components/customer-page';
+import { ErrorState, NoticeBanner } from '@/components/error-state';
+import { InlineSpinner } from '@/components/loading-state';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 import {
   ApiError,
   createServiceRequest,
@@ -24,51 +34,27 @@ import {
   type GuestServiceRequest,
 } from '@/lib/customer-storage';
 import { createSocketClient } from '@/lib/socket';
+import { cn } from '@/lib/utils';
 
 type RequestType = 'assistance' | 'bill' | 'custom' | 'cutlery' | 'water';
 
 type ServicePreset = {
   description: string;
-  icon: string;
+  icon: LucideIcon;
   label: string;
   requestType: RequestType;
   statusLabel: string;
 };
 
 const presets: ServicePreset[] = [
-  {
-    description: 'Quick refill request',
-    icon: 'water_drop',
-    label: 'Water',
-    requestType: 'water',
-    statusLabel: 'ON THE WAY',
-  },
-  {
-    description: 'Need staff support',
-    icon: 'front_hand',
-    label: 'Assistance',
-    requestType: 'assistance',
-    statusLabel: 'REQUESTED',
-  },
-  {
-    description: 'Request the check',
-    icon: 'receipt_long',
-    label: 'Bill',
-    requestType: 'bill',
-    statusLabel: 'REQUESTED',
-  },
-  {
-    description: 'Extra spoons, forks, or knives',
-    icon: 'restaurant',
-    label: 'Cutlery',
-    requestType: 'cutlery',
-    statusLabel: 'ON THE WAY',
-  },
+  { description: 'Quick refill', icon: GlassWater, label: 'Water', requestType: 'water', statusLabel: 'On the way' },
+  { description: 'Call a team member', icon: Hand, label: 'Assistance', requestType: 'assistance', statusLabel: 'Requested' },
+  { description: 'Ask for the check', icon: ReceiptText, label: 'Bill', requestType: 'bill', statusLabel: 'Requested' },
+  { description: 'Spoons, forks, or knives', icon: Utensils, label: 'Cutlery', requestType: 'cutlery', statusLabel: 'On the way' },
 ];
 
 const relativeTime = (value: string): string => {
-  const diffMs = Date.now() - new Date(value).getTime();
-  const minutes = Math.max(1, Math.round(diffMs / 60000));
+  const minutes = Math.max(1, Math.round((Date.now() - new Date(value).getTime()) / 60000));
   if (minutes < 60) {
     return `${minutes} min${minutes === 1 ? '' : 's'} ago`;
   }
@@ -76,15 +62,8 @@ const relativeTime = (value: string): string => {
   return `${hours} hour${hours === 1 ? '' : 's'} ago`;
 };
 
-const titleFor = (requestType: RequestType): string => {
-  const preset = presets.find((item) => item.requestType === requestType);
-  return preset?.label ?? 'Custom Request';
-};
-
-const statusLabelFor = (requestType: RequestType): string => {
-  const preset = presets.find((item) => item.requestType === requestType);
-  return preset?.statusLabel ?? 'REQUESTED';
-};
+const titleFor = (requestType: RequestType): string => presets.find((item) => item.requestType === requestType)?.label ?? 'Custom request';
+const statusLabelFor = (requestType: RequestType): string => presets.find((item) => item.requestType === requestType)?.statusLabel ?? 'Requested';
 
 function requestMatchesActiveSession(request: GuestServiceRequest | null, nextContext: TableContext): boolean {
   const activeTableSessionId = nextContext.tableSession?.id;
@@ -102,20 +81,18 @@ function serviceRequestSnapshot(request: CmsServiceRequest): GuestServiceRequest
   };
 }
 
-export default function CustomerServicePage() {
+export default function CustomerServicePage(): ReactNode {
   const { basePath, qrToken } = useCustomerRoute();
   const [context, setContext] = useState<TableContext | null>(null);
   const [guest, setGuest] = useState<GuestSession | null>(null);
   const [recentRequest, setRecentRequest] = useState<GuestServiceRequest | null>(null);
   const [customMessage, setCustomMessage] = useState('');
   const [busyType, setBusyType] = useState<RequestType | ''>('');
-  const [notice, setNotice] = useState('Loading service request options...');
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (!qrToken) {
-      setNotice('This customer URL is missing a QR token.');
-      setError('Open a full table URL like /r/{tenant}/{branch}/t/{qrToken}.');
+      setError('Open a full table link like /r/{tenant}/{branch}/t/{qrToken}.');
       return;
     }
 
@@ -125,9 +102,7 @@ export default function CustomerServicePage() {
 
     getTableContext(qrToken)
       .then(async (nextContext) => {
-        if (!active) {
-          return;
-        }
+        if (!active) return;
         const storedRequest = readRecentServiceRequest(qrToken);
         const activeTableSessionId = nextContext.tableSession?.id;
         if (session?.tableSessionId && session.tableSessionId !== activeTableSessionId) {
@@ -145,34 +120,25 @@ export default function CustomerServicePage() {
               setGuest(null);
               return null;
             }
-
             throw nextError;
           });
-          if (!active) {
-            return;
-          }
+          if (!active) return;
           if (activeRequest) {
             const nextRequest = serviceRequestSnapshot(activeRequest);
             writeRecentServiceRequest(qrToken, nextRequest);
             setRecentRequest(nextRequest);
-          } else if (requestMatchesActiveSession(storedRequest, nextContext)) {
-            clearRecentServiceRequest(qrToken);
-            setRecentRequest(null);
           } else {
+            // A stale stored request from this or an older session is no longer open.
+            void requestMatchesActiveSession(storedRequest, nextContext);
             clearRecentServiceRequest(qrToken);
             setRecentRequest(null);
           }
         }
 
         setContext(nextContext);
-        setNotice('Tap a request or send a custom message.');
       })
       .catch((nextError: Error) => {
-        if (!active) {
-          return;
-        }
-        setError(nextError.message);
-        setNotice('Service requests could not be loaded.');
+        if (active) setError(nextError.message);
       });
 
     return () => {
@@ -192,10 +158,9 @@ export default function CustomerServicePage() {
         const sameSession = !payload?.tableSessionId || !current?.tableSessionId || payload.tableSessionId === current.tableSessionId;
         if (sameRequest && sameSession) {
           clearRecentServiceRequest(qrToken);
-          setNotice('Your request has been resolved.');
+          toast.success('Your request has been resolved');
           return null;
         }
-
         return current;
       });
     });
@@ -208,29 +173,18 @@ export default function CustomerServicePage() {
 
   async function reconnectGuestSession(): Promise<GuestSession> {
     if (!qrToken) {
-      throw new Error('This customer URL is missing a QR token.');
+      throw new Error('This table link is missing its QR token.');
     }
-
-    setNotice('Reconnecting this device to the table...');
     const alias = context?.table.tableNo ? `Guest ${context.table.tableNo}` : 'Guest';
     const nextGuest = await joinTable(qrToken, alias);
     writeGuestSession(qrToken, nextGuest);
     setGuest(nextGuest);
-    const nextContext = await getTableContext(qrToken);
-    setContext(nextContext);
+    setContext(await getTableContext(qrToken));
     return nextGuest;
   }
 
-  async function guestForRequest(): Promise<GuestSession> {
-    if (guest?.guestToken) {
-      return guest;
-    }
-
-    return reconnectGuestSession();
-  }
-
   async function createRequestWithGuest(body: { message?: string; requestType: RequestType }): Promise<CmsServiceRequest> {
-    let requestGuest = await guestForRequest();
+    let requestGuest = guest?.guestToken ? guest : await reconnectGuestSession();
 
     try {
       return await createServiceRequest(requestGuest.guestToken, body);
@@ -238,7 +192,6 @@ export default function CustomerServicePage() {
       if (!(nextError instanceof ApiError) || ![401, 404].includes(nextError.status)) {
         throw nextError;
       }
-
       clearGuestSession(qrToken);
       setGuest(null);
       clearRecentServiceRequest(qrToken);
@@ -250,16 +203,20 @@ export default function CustomerServicePage() {
 
   async function sendRequest(requestType: RequestType, message?: string): Promise<void> {
     if (!qrToken) {
-      setError('This customer URL is missing a QR token.');
+      setError('This table link is missing its QR token.');
       return;
     }
 
     const trimmedMessage = message?.trim();
+    if (requestType === 'custom' && !trimmedMessage) {
+      toast.error('Tell us what you need first.');
+      return;
+    }
+
     setBusyType(requestType);
     setError('');
     try {
-      const requestBody = trimmedMessage ? { message: trimmedMessage, requestType } : { requestType };
-      const request = await createRequestWithGuest(requestBody);
+      const request = await createRequestWithGuest(trimmedMessage ? { message: trimmedMessage, requestType } : { requestType });
       const tableSessionId = request.tableSessionId ?? guest?.tableSessionId ?? context?.tableSession?.id;
 
       const nextRequest: GuestServiceRequest = {
@@ -273,7 +230,7 @@ export default function CustomerServicePage() {
 
       writeRecentServiceRequest(qrToken, nextRequest);
       setRecentRequest(nextRequest);
-      setNotice(`${titleFor(requestType)} request sent.`);
+      toast.success(`${titleFor(requestType)} request sent`);
       if (requestType === 'custom') {
         setCustomMessage('');
       }
@@ -281,105 +238,95 @@ export default function CustomerServicePage() {
       if (nextError instanceof ApiError && nextError.status === 401) {
         clearGuestSession(qrToken);
         setGuest(null);
-        setNotice('This device could not reconnect to the table.');
-        setError('Open the table link again and try once more.');
+        setError('This device could not reconnect to the table. Open the table link again and try once more.');
         return;
       }
-      setError(nextError instanceof Error ? nextError.message : 'Could not send the request.');
+      toast.error(nextError instanceof Error ? nextError.message : 'Could not send the request.');
     } finally {
       setBusyType('');
     }
   }
 
-  const activeTitle = recentRequest ? titleFor(recentRequest.requestType as RequestType) : 'No active request';
-  const activeMessage = recentRequest?.message ?? 'Your latest request will appear here.';
-  const canReconnectToTable = Boolean(qrToken);
-  const canRequest = Boolean(guest?.guestToken || canReconnectToTable);
+  const canRequest = Boolean(guest?.guestToken || qrToken);
 
   return (
-    <main className="customer-main customer-main--mobile">
-      <section className="customer-header customer-header--service">
-        <div>
-          <h1>At Your Service</h1>
-          <p className="muted">Tap to request immediate assistance to Table {context?.table.tableNo ?? '42'}.</p>
-        </div>
-      </section>
+    <CustomerPage>
+      <CustomerHeading
+        description={context ? `Tap a request and a team member comes to table ${context.table.tableNo}.` : 'Tap a request and a team member comes to your table.'}
+        title="Service"
+      />
+
+      {error ? <ErrorState message={error} /> : null}
 
       {recentRequest ? (
-        <section className="customer-request-status">
-          <div className="customer-request-status__icon">
-            <span className="material-symbols-outlined">check_circle</span>
+        <Card className="flex-row items-center gap-3 px-4 py-3 shadow-card">
+          <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-success-foreground text-success">
+            <CircleCheck aria-hidden="true" className="size-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">{titleFor(recentRequest.requestType as RequestType)}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {recentRequest.message ? `“${recentRequest.message}” · ` : ''}Requested {relativeTime(recentRequest.createdAt)}
+            </p>
           </div>
-          <div>
-            <h2>{activeTitle}</h2>
-            <p className="muted">Requested {relativeTime(recentRequest.createdAt)}</p>
-          </div>
-          <span className="customer-request-status__chip">{recentRequest.statusLabel}</span>
-        </section>
+          <Badge variant="warning">{recentRequest.statusLabel}</Badge>
+        </Card>
       ) : null}
-
-      {notice ? <p className="notice-text">{notice}</p> : null}
-      {error ? <p className="error-text">{error}</p> : null}
 
       {!canRequest ? (
-        <section className="customer-panel customer-service-join">
-          <div>
-            <h2>Join table to request service</h2>
-            <p className="muted">Service requests need your table session so staff know where to respond.</p>
-          </div>
-          <a className="button-link" href={basePath || '/'}>
-            Join Table
-            <span className="material-symbols-outlined">arrow_forward</span>
-          </a>
-        </section>
+        <NoticeBanner>
+          Join the table so staff know where to come.{' '}
+          <Link className="inline-flex items-center gap-1 font-semibold underline" href={basePath || '/'}>
+            Join table
+            <ArrowRight aria-hidden="true" className="size-3.5" />
+          </Link>
+        </NoticeBanner>
       ) : null}
 
-      <section className="service-grid">
-        {presets.map((preset) => (
-          <button
-            className={`service-card service-card--button ${busyType === preset.requestType ? 'service-card--busy' : ''}`}
-            disabled={busyType !== ''}
-            key={preset.requestType}
-            onClick={() => void sendRequest(preset.requestType)}
-            type="button"
-          >
-            <span className="service-card__icon">
-              <span className="material-symbols-outlined">{preset.icon}</span>
-            </span>
-            <strong>{preset.label}</strong>
-            <span className="muted">{preset.description}</span>
-          </button>
-        ))}
+      <section aria-label="Quick requests" className="grid grid-cols-2 gap-3">
+        {presets.map(({ description, icon: Icon, label, requestType }) => {
+          const isBusy = busyType === requestType;
+          return (
+            <button
+              className={cn(
+                'grid justify-items-start gap-2 rounded-xl border bg-card p-4 text-left shadow-card transition-all',
+                'hover:border-primary/40 hover:bg-accent/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                'disabled:pointer-events-none disabled:opacity-60',
+              )}
+              disabled={busyType !== ''}
+              key={requestType}
+              onClick={() => void sendRequest(requestType)}
+              type="button"
+            >
+              <span className="inline-flex size-11 items-center justify-center rounded-full bg-accent text-accent-foreground">
+                {isBusy ? <InlineSpinner className="size-5" /> : <Icon aria-hidden="true" className="size-5" />}
+              </span>
+              <span className="text-sm font-semibold">{label}</span>
+              <span className="text-xs text-muted-foreground">{description}</span>
+            </button>
+          );
+        })}
       </section>
 
-      <section className="customer-panel customer-request-form">
-        <h2>Custom Request</h2>
-        <p className="muted">Need something specific? Let us know.</p>
-        <label>
-          <span className="sr-only">Custom request message</span>
-          <textarea
-            disabled={busyType === 'custom'}
-            onChange={(event) => setCustomMessage(event.target.value)}
-            placeholder="E.g., Extra spicy sauce, please."
-            value={customMessage}
-          />
-        </label>
-        <button disabled={busyType === 'custom'} onClick={() => void sendRequest('custom', customMessage)} type="button">
-          <span className="material-symbols-outlined">send</span>
-          Send Request
-        </button>
-      </section>
-
-      {recentRequest ? (
-        <section className="customer-request-summary">
-          <div>
-            <span className="eyebrow">Latest Request</span>
-            <h2>{activeTitle}</h2>
-            <p className="muted">{activeMessage}</p>
-          </div>
-          <span className="status-pill">{recentRequest.statusLabel}</span>
-        </section>
-      ) : null}
-    </main>
+      <Card className="gap-3 px-4 py-4 shadow-card">
+        <div>
+          <h2 className="font-semibold">Something else?</h2>
+          <p className="text-sm text-muted-foreground">Send a note straight to the floor team.</p>
+        </div>
+        <Textarea
+          aria-label="Custom request"
+          disabled={busyType === 'custom'}
+          maxLength={280}
+          onChange={(event) => setCustomMessage(event.target.value)}
+          placeholder="e.g. Extra spicy sauce, please."
+          rows={3}
+          value={customMessage}
+        />
+        <Button className="h-11" disabled={busyType !== '' || !customMessage.trim()} onClick={() => void sendRequest('custom', customMessage)} type="button">
+          {busyType === 'custom' ? <InlineSpinner /> : <Send />}
+          Send request
+        </Button>
+      </Card>
+    </CustomerPage>
   );
 }

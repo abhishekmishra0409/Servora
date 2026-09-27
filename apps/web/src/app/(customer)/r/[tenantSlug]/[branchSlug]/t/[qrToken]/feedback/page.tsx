@@ -1,17 +1,31 @@
-import { PageShell } from '@/components/page-shell';
-import { StatePanel } from '@/components/state-panel';
+import { MessageSquareHeart } from 'lucide-react';
+import Link from 'next/link';
 
-export default function CustomerFeedbackPage() {
+import { CustomerHeading, CustomerPage } from '@/components/customer-page';
+import { EmptyState } from '@/components/empty-state';
+import { Button } from '@/components/ui/button';
+
+export default async function CustomerFeedbackPage({
+  params,
+}: {
+  params: Promise<{ branchSlug: string; qrToken: string; tenantSlug: string }>;
+}) {
+  const resolvedParams = await params;
+  const base = `/r/${resolvedParams.tenantSlug}/${resolvedParams.branchSlug}/t/${resolvedParams.qrToken}`;
+
   return (
-    <PageShell
-      eyebrow="Feedback"
-      title="Catch the post-meal signal while it is fresh."
-      description="A future-ready feedback page closes the dine-in loop without changing the operational order model."
-    >
-      <div className="state-row">
-        <StatePanel tone="loading" title="Rating capture" description="Lightweight feedback and follow-up intent." />
-        <StatePanel tone="empty" title="Loyalty hook" description="Reserve room for future account history and favorites." />
-      </div>
-    </PageShell>
+    <CustomerPage>
+      <CustomerHeading description="Tell the restaurant how your visit went." title="Feedback" />
+      <EmptyState
+        action={
+          <Button asChild variant="outline">
+            <Link href={`${base}/service`}>Send a note to the team</Link>
+          </Button>
+        }
+        description="Ratings are not collected here yet. In the meantime you can send the floor team a message from the service screen."
+        icon={MessageSquareHeart}
+        title="Feedback is coming soon"
+      />
+    </CustomerPage>
   );
 }
