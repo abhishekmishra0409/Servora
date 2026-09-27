@@ -19,14 +19,14 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
 import { useCmsSession } from '@/components/cms-session-provider';
 import { ConfirmDialog, useConfirm } from '@/components/confirm-dialog';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState, NoticeBanner } from '@/components/error-state';
+import { NoticeBanner } from '@/components/error-state';
 import { FormActions, FormField, FormGrid } from '@/components/form-field';
 import { PageShell } from '@/components/page-shell';
 import { PermissionMatrix } from '@/components/permission-matrix';
@@ -36,9 +36,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ApiError, createCmsRole, deleteCmsRole, getCmsRoles, updateCmsRole, type CmsRole } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
+import { errorMessage } from '@/lib/async-state';
 import { normalize, summarize } from '@/lib/permission-matrix';
 import { cn } from '@/lib/utils';
+import { useCmsResource } from '@/lib/use-cms-resource';
 
 /** Permissions an editor cannot strip from a role they personally hold. */
 const SELF_PROTECTED = ['roles:view', 'roles:edit', 'staff:view'];
@@ -66,8 +67,11 @@ function StepHeading({ number, title }: { number: number; title: string }): Reac
 export function RoleBuilder(): ReactNode {
   const session = useCmsSession();
   const confirm = useConfirm();
-  const [roles, setRoles] = useState<CmsRole[]>([]);
-  const [state, setState] = useState<AsyncState>(loading);
+  const resource = useCmsResource<CmsRole[]>(({ tenantId, token }) => getCmsRoles(tenantId, token), {
+    initial: [],
+    scope: 'tenant',
+  });
+  const roles = resource.data;
   const [limitError, setLimitError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -78,22 +82,6 @@ export function RoleBuilder(): ReactNode {
   const canAdd = session.can('roles:add');
   const canEdit = session.can('roles:edit');
   const canDelete = session.can('roles:delete');
-
-  async function load(): Promise<void> {
-    if (!session.token || !session.tenantId) {
-      return;
-    }
-    try {
-      setRoles(await getCmsRoles(session.tenantId, session.token));
-      setState(ready);
-    } catch (error) {
-      setState(failed(error, 'Could not load roles.'));
-    }
-  }
-
-  useEffect(() => {
-    void load();
-  }, [session.token, session.tenantId]);
 
   /** Roles the editor currently holds — their own access must survive a save. */
   const ownRoleKeys = useMemo(
@@ -176,7 +164,7 @@ export function RoleBuilder(): ReactNode {
 
       setEditorOpen(false);
       setEditingId('');
-      await load();
+      await resource.reload();
       // The editor may have just changed their own access.
       await session.reload();
       await session.refreshEntitlements();
@@ -196,7 +184,7 @@ export function RoleBuilder(): ReactNode {
     try {
       await deleteCmsRole(role.id, session.token);
       toast.success(`${role.name} deleted`);
-      await load();
+      await resource.reload();
       await session.refreshEntitlements();
     } catch (error) {
       toast.error(errorMessage(error, 'Could not delete the role.'));
@@ -220,6 +208,8 @@ export function RoleBuilder(): ReactNode {
 
   return (
     <PageShell
+      resource={resource}
+      what="roles"
       actions={
         canAdd && !editorOpen ? (
           <Button onClick={openCreate} type="button">
@@ -232,7 +222,6 @@ export function RoleBuilder(): ReactNode {
       eyebrow="Roles and access"
       title="Roles"
     >
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
       <PlanLimitNotice error={limitError} resource="roles" />
       <UsageStrip cap={customRoleCap} label="Custom roles" used={customRoleCount} />
 
@@ -367,7 +356,7 @@ export function RoleBuilder(): ReactNode {
           </Button>
         }
         contentClassName="space-y-0"
-        title={`${roles.length} roles`}
+        title={resource.status === 'loading' ? 'Roles' : `${roles.length} roles`}
       >
         <DataTable
           columns={[
@@ -446,7 +435,7 @@ export function RoleBuilder(): ReactNode {
             },
           ]}
           empty={<EmptyState compact icon={ShieldCheck} title="No roles yet" />}
-          loading={state.status === 'loading'}
+          loading={resource.status === 'loading'}
           rowKey={(role) => role.id}
           rows={roles}
           searchPlaceholder="Search roles"

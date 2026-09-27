@@ -1,7 +1,7 @@
 'use client';
 
 import { DEFAULT_TENANT_FEATURES } from '@restaurent/shared';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import {
@@ -13,8 +13,8 @@ import {
   type CmsSubscriptionPlan,
   type CmsSuperAdminTenantSummary,
 } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
-import { readCmsSettings } from '@/lib/cms-storage';
+import { errorMessage } from '@/lib/async-state';
+import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 import { humanize, type StatusTone } from '@/lib/status-tone';
 
 export const blankTenantForm = {
@@ -58,21 +58,17 @@ export const planMoney = (plan: CmsSubscriptionPlan): string => platformMoney(pl
 export function usePlatformConsole() {
   const [busy, setBusy] = useState(false);
   const [createForm, setCreateForm] = useState<TenantForm>(blankTenantForm);
-  const [state, setState] = useState<AsyncState>(loading);
-  const [plans, setPlans] = useState<CmsSubscriptionPlan[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState('');
-  const [tenants, setTenants] = useState<CmsSuperAdminTenantSummary[]>([]);
-  const [token, setToken] = useState('');
-
-  useEffect(() => {
-    const settings = readCmsSettings();
-    setToken(settings.token);
-    if (!settings.token) {
-      setState(failed(new Error('Sign in as a platform admin to manage tenants.')));
-      return;
-    }
-    void load(settings.token);
-  }, []);
+  const resource = useCmsResource<{ plans: CmsSubscriptionPlan[]; tenants: CmsSuperAdminTenantSummary[] }>(
+    async ({ token }) => {
+      const [tenants, plans] = await Promise.all([getSuperAdminTenants(token), getSuperAdminPlans(token)]);
+      setSelectedTenantId((current) => current || documentId(tenants[0]?.tenant ?? {}));
+      return { plans, tenants };
+    },
+    { initial: { plans: [], tenants: [] }, scope: 'account' },
+  );
+  const { plans, tenants } = resource.data;
+  const token = readCmsContext().token;
 
   const stats = useMemo<PlatformStats>(() => {
     const activeTenants = tenants.filter((item) => item.tenant.status === 'active').length;
@@ -115,21 +111,6 @@ export function usePlatformConsole() {
     return [...tenantEvents, ...billingEvents].slice(0, 5);
   }, [tenants]);
 
-  async function load(nextToken = token, nextTenantId = selectedTenantId): Promise<void> {
-    setBusy(true);
-    try {
-      const [nextTenants, nextPlans] = await Promise.all([getSuperAdminTenants(nextToken), getSuperAdminPlans(nextToken)]);
-      setTenants(nextTenants);
-      setPlans(nextPlans);
-      setSelectedTenantId(nextTenantId || documentId(nextTenants[0]?.tenant ?? {}));
-      setState(ready);
-    } catch (error) {
-      setState(failed(error, 'Could not load platform tenants.'));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function createTenant(): Promise<boolean> {
     if (!createForm.legalName.trim()) {
       toast.error('Tenant name is required.');
@@ -170,7 +151,7 @@ export function usePlatformConsole() {
       setCreateForm(blankTenantForm);
       setSelectedTenantId(documentId(nextDetail.tenant));
       toast.success(`${nextDetail.tenant.legalName} created`);
-      await load(token, documentId(nextDetail.tenant));
+      await resource.reload();
       return true;
     } catch (error) {
       toast.error(errorMessage(error, 'Could not create tenant.'));
@@ -181,7 +162,10 @@ export function usePlatformConsole() {
   }
 
   function updatePlanLocal(code: string, patch: Partial<CmsSubscriptionPlan>): void {
-    setPlans((current) => current.map((plan) => (plan.code === code ? { ...plan, ...patch } : plan)));
+    resource.setData((current) => ({
+      ...current,
+      plans: current.plans.map((plan) => (plan.code === code ? { ...plan, ...patch } : plan)),
+    }));
   }
 
   async function savePlanSettings(plan: CmsSubscriptionPlan): Promise<void> {
@@ -215,17 +199,17 @@ export function usePlatformConsole() {
   }
 
   return {
-    busy,
+    busy: busy || resource.refreshing,
     createForm,
     createTenant,
-    load: () => load(),
+    load: resource.reload,
     plans,
     recentEvents,
     savePlanSettings,
     selectTenant: setSelectedTenantId,
     selectedTenantId,
     setCreateForm,
-    state,
+    state: resource,
     stats,
     tenants,
     token,

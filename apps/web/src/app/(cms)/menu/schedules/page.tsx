@@ -1,12 +1,11 @@
 'use client';
 
 import { CalendarClock, Pencil } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState } from '@/components/error-state';
 import { FormActions, FormField, FormGrid } from '@/components/form-field';
 import { PageShell } from '@/components/page-shell';
 import { SectionCard } from '@/components/section-card';
@@ -16,39 +15,17 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { documentId, getCmsMenuItems, updateCmsMenuItem, type CmsMenuItem } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
-import { readCmsSettings } from '@/lib/cms-storage';
+import { errorMessage } from '@/lib/async-state';
+import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 const allDays = 'mon, tue, wed, thu, fri, sat, sun';
 
 export default function MenuSchedulesPage() {
   const [editingId, setEditingId] = useState('');
   const [form, setForm] = useState({ available: true, days: allDays, endTime: '23:00', startTime: '11:00' });
-  const [items, setItems] = useState<CmsMenuItem[]>([]);
-  const [state, setState] = useState<AsyncState>(loading);
   const [saving, setSaving] = useState(false);
-  const [token, setToken] = useState('');
-  const [branchId, setBranchId] = useState('');
-
-  async function load(nextBranchId = branchId, nextToken = token): Promise<void> {
-    if (!nextBranchId || !nextToken) {
-      setState(failed(new Error('This account is not linked to an outlet yet.')));
-      return;
-    }
-    try {
-      setItems(await getCmsMenuItems(nextBranchId, nextToken));
-      setState(ready);
-    } catch (error) {
-      setState(failed(error, 'Could not load schedules.'));
-    }
-  }
-
-  useEffect(() => {
-    const settings = readCmsSettings();
-    setBranchId(settings.branchId);
-    setToken(settings.token);
-    void load(settings.branchId, settings.token);
-  }, []);
+  const resource = useCmsResource<CmsMenuItem[]>(({ branchId, token }) => getCmsMenuItems(branchId, token), { initial: [] });
+  const items = resource.data;
 
   const editingItem = items.find((item) => documentId(item) === editingId);
 
@@ -65,6 +42,7 @@ export default function MenuSchedulesPage() {
   }
 
   async function save(): Promise<void> {
+    const { token } = readCmsContext();
     if (!editingId || !token) {
       toast.error('Choose an item before saving schedule changes.');
       return;
@@ -86,7 +64,7 @@ export default function MenuSchedulesPage() {
         token,
       );
       setEditingId('');
-      await load();
+      await resource.reload();
       toast.success('Schedule saved');
     } catch (error) {
       toast.error(errorMessage(error, 'Could not save schedule.'));
@@ -97,12 +75,12 @@ export default function MenuSchedulesPage() {
 
   return (
     <PageShell
+      resource={resource}
+      what="schedules"
       description="Daypart windows and quick sold-out switches per dish. Hidden items stay saved but leave the guest menu."
       eyebrow="Menu"
       title="Schedules"
     >
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
-
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
         <SectionCard
           actions={
@@ -141,7 +119,7 @@ export default function MenuSchedulesPage() {
           </FormActions>
         </SectionCard>
 
-        <SectionCard contentClassName="space-y-0" title={`${items.length} dishes`}>
+        <SectionCard contentClassName="space-y-0" title={resource.status === 'loading' ? 'Dishes' : `${items.length} dishes`}>
           <DataTable
             columns={[
               { header: 'Dish', key: 'name', render: (item) => <span className="font-semibold">{item.name}</span> },
@@ -177,7 +155,7 @@ export default function MenuSchedulesPage() {
               },
             ]}
             empty={<EmptyState compact description="Create dishes on the menu items page first." icon={CalendarClock} title="No dishes to schedule" />}
-            loading={state.status === 'loading'}
+            loading={resource.status === 'loading'}
             rowClassName={(item) => (documentId(item) === editingId ? 'bg-accent/40' : undefined)}
             pageSize={10}
             rowKey={documentId}

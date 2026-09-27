@@ -68,8 +68,8 @@ export function toneFor(kind: StatusKind, value: string): StatusTone {
   return toneMaps[kind][value] ?? 'default';
 }
 
-/** `pending_confirmation` -> `Pending confirmation`. */
+/** `pending_confirmation` -> `Pending confirmation`; `menu_item.updated` -> `Menu item updated`. */
 export function humanize(value: string): string {
-  const spaced = value.replaceAll('_', ' ').replaceAll('-', ' ').trim();
+  const spaced = value.replace(/[._-]+/g, ' ').replace(/\s+/g, ' ').trim();
   return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : '';
 }

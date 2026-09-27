@@ -1,53 +1,51 @@
 'use client';
 
 import { BellRing, ChefHat, CircleCheckBig, IndianRupee, ReceiptText, Armchair } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState } from '@/components/error-state';
 import { LoadingRows } from '@/components/loading-state';
-import { PageHeader } from '@/components/page-header';
 import { PageShell } from '@/components/page-shell';
 import { SectionCard } from '@/components/section-card';
 import { StatCard, StatGrid } from '@/components/stat-card';
 import { StatusBadge } from '@/components/status-badge';
 import { getLiveOrders, getOrderById, type LiveOrder } from '@/lib/api-client';
-import { failed, loading, ready, type AsyncState } from '@/lib/async-state';
-import { readCmsSettings } from '@/lib/cms-storage';
 import { money, shortId } from '@/lib/format';
 import { formatOrderNumber } from '@/lib/order-number';
-import { createSocketClient } from '@/lib/socket';
+import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 const liveStatuses = new Set(['accepted', 'pending_confirmation', 'preparing', 'ready']);
 
 const orderKey = (order: LiveOrder): string => order.id ?? order._id ?? '';
 
-export default function DashboardPage() {
-  const [branchId, setBranchId] = useState('');
-  const [token, setToken] = useState('');
-  const [orders, setOrders] = useState<LiveOrder[]>([]);
-  const [state, setState] = useState<AsyncState>(loading);
+function upsertOrder(currentOrders: LiveOrder[], order: LiveOrder): LiveOrder[] {
+  const nextOrderKey = orderKey(order);
+  const withoutExisting = currentOrders.filter((currentOrder) => orderKey(currentOrder) !== nextOrderKey);
+  return [order, ...withoutExisting].sort(
+    (left, right) => new Date(right.submittedAt ?? 0).getTime() - new Date(left.submittedAt ?? 0).getTime(),
+  );
+}
 
-  useEffect(() => {
-    const settings = readCmsSettings();
-    setBranchId(settings.branchId);
-    setToken(settings.token);
-    void load(settings.branchId, settings.token);
-    const socket = settings.token ? createSocketClient(settings.token) : null;
-    const syncOrderEvent = (payload?: { orderId?: string }): void => {
-      if (payload?.orderId) {
-        void syncOrder(payload.orderId, settings.branchId, settings.token);
-        return;
-      }
-      void load(settings.branchId, settings.token);
-    };
-    socket?.on('order.created', syncOrderEvent);
-    socket?.on('order.status_updated', syncOrderEvent);
-    socket?.connect();
-    return () => {
-      socket?.disconnect();
-    };
-  }, []);
+export default function DashboardPage() {
+  const resource = useCmsResource<LiveOrder[]>(({ branchId, token }) => getLiveOrders(branchId, token), {
+    events: ['order.created', 'order.status_updated'],
+    initial: [],
+    // Patch the one order that changed instead of refetching the whole queue.
+    onEvent: (_event, payload) => {
+      const orderId = (payload as { orderId?: string } | undefined)?.orderId;
+      if (!orderId) return false;
+      void getOrderById(orderId, readCmsContext().token)
+        .then((order) =>
+          resource.setData((current) =>
+            liveStatuses.has(order.status) ? upsertOrder(current, order) : current.filter((item) => orderKey(item) !== orderKey(order)),
+          ),
+        )
+        .catch(() => void resource.reload());
+      return true;
+    },
+  });
+  const orders = resource.data;
+  const isLoading = resource.status === 'loading';
 
   const kpis = useMemo(() => {
     const pending = orders.filter((order) => order.status === 'pending_confirmation').length;
@@ -57,69 +55,26 @@ export default function DashboardPage() {
     return { kitchen, pending, ready: readyCount, value };
   }, [orders]);
 
-  async function load(nextBranchId = branchId, nextToken = token): Promise<void> {
-    if (!nextBranchId || !nextToken) {
-      setOrders([]);
-      setState(failed(new Error('This account is not linked to an outlet yet.')));
-      return;
-    }
-    try {
-      setOrders(await getLiveOrders(nextBranchId, nextToken));
-      setState(ready);
-    } catch (error) {
-      setOrders([]);
-      setState(failed(error, 'Could not load dashboard data.'));
-    }
-  }
-
-  async function syncOrder(orderId: string, nextBranchId = branchId, nextToken = token): Promise<void> {
-    if (!nextBranchId || !nextToken) {
-      return;
-    }
-    try {
-      const order = await getOrderById(orderId, nextToken);
-      setOrders((currentOrders) =>
-        liveStatuses.has(order.status)
-          ? upsertOrder(currentOrders, order)
-          : currentOrders.filter((currentOrder) => orderKey(currentOrder) !== orderKey(order)),
-      );
-    } catch {
-      void load(nextBranchId, nextToken);
-    }
-  }
-
-  function upsertOrder(currentOrders: LiveOrder[], order: LiveOrder): LiveOrder[] {
-    const nextOrderKey = orderKey(order);
-    const withoutExisting = currentOrders.filter((currentOrder) => orderKey(currentOrder) !== nextOrderKey);
-    return [order, ...withoutExisting].sort(
-      (left, right) => new Date(right.submittedAt ?? 0).getTime() - new Date(left.submittedAt ?? 0).getTime(),
-    );
-  }
-
   const pendingOrders = orders.filter((order) => order.status === 'pending_confirmation');
 
   return (
-    <PageShell>
-      <PageHeader
-        description="Live view of the order queue for this outlet. Updates arrive in realtime."
-        eyebrow="Overview"
-        onRefresh={() => void load()}
-        refreshing={state.status === 'loading'}
-        title="Live dashboard"
-      />
-
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
-
+    <PageShell
+      description="Live view of the order queue for this outlet. Updates arrive in realtime."
+      eyebrow="Overview"
+      resource={resource}
+      title="Live dashboard"
+      what="the order queue"
+    >
       <StatGrid>
-        <StatCard loading={state.status === 'loading'} icon={BellRing} label="Pending confirmation" tone="warning" value={kpis.pending} />
-        <StatCard loading={state.status === 'loading'} icon={ChefHat} label="Kitchen queue" tone="info" value={kpis.kitchen} />
-        <StatCard loading={state.status === 'loading'} icon={CircleCheckBig} label="Ready to serve" tone="success" value={kpis.ready} />
-        <StatCard loading={state.status === 'loading'} icon={IndianRupee} label="Live order value" tone="primary" value={money(kpis.value)} />
+        <StatCard loading={isLoading} icon={BellRing} label="Pending confirmation" tone="warning" value={kpis.pending} />
+        <StatCard loading={isLoading} icon={ChefHat} label="Kitchen queue" tone="info" value={kpis.kitchen} />
+        <StatCard loading={isLoading} icon={CircleCheckBig} label="Ready to serve" tone="success" value={kpis.ready} />
+        <StatCard loading={isLoading} icon={IndianRupee} label="Live order value" tone="primary" value={money(kpis.value)} />
       </StatGrid>
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <SectionCard className="lg:row-span-2" description="Newest first" title="Priority orders">
-          {state.status === 'loading' ? (
+          {isLoading ? (
             <LoadingRows count={4} />
           ) : orders.length === 0 ? (
             <EmptyState compact description="New orders from the floor will show up here." icon={ReceiptText} title="No live orders" />
@@ -143,7 +98,7 @@ export default function DashboardPage() {
         </SectionCard>
 
         <SectionCard title="Floor signals">
-          {state.status === 'loading' ? (
+          {isLoading ? (
             <LoadingRows count={3} />
           ) : orders.length === 0 ? (
             <EmptyState compact icon={Armchair} title="No active tables" />
@@ -166,7 +121,7 @@ export default function DashboardPage() {
         </SectionCard>
 
         <SectionCard description="Orders waiting for a waiter to confirm" title="Confirmation queue">
-          {state.status === 'loading' ? (
+          {isLoading ? (
             <LoadingRows count={2} />
           ) : pendingOrders.length === 0 ? (
             <EmptyState compact icon={BellRing} title="Nothing waiting" />

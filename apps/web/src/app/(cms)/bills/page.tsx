@@ -4,11 +4,10 @@ import { Banknote, CircleCheckBig, CreditCard, QrCode, ReceiptText, Wallet } fro
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
+import { useCmsSession } from '@/components/cms-session-provider';
 import { useConfirm } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState } from '@/components/error-state';
 import { LoadingCards, LoadingRows } from '@/components/loading-state';
-import { PageHeader } from '@/components/page-header';
 import { PageShell } from '@/components/page-shell';
 import { SectionCard } from '@/components/section-card';
 import { StatusBadge } from '@/components/status-badge';
@@ -16,12 +15,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { documentId, getBills, markPaymentPaid, requestBill, type CmsBill, type PaymentSnapshot } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
-import { readCmsSettings } from '@/lib/cms-storage';
+import { errorMessage } from '@/lib/async-state';
 import { money, shortId } from '@/lib/format';
 import { formatOrderNumber } from '@/lib/order-number';
-import { createSocketClient } from '@/lib/socket';
 import { humanize } from '@/lib/status-tone';
+import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 const COMPLETED_PAGE_SIZE = 6;
 
@@ -34,11 +32,15 @@ const paymentMethods = [
 export default function BillsPage() {
   const [busy, setBusy] = useState('');
   const [completedPage, setCompletedPage] = useState(1);
-  const [state, setState] = useState<AsyncState>(loading);
-  const [bills, setBills] = useState<CmsBill[]>([]);
+  const resource = useCmsResource<CmsBill[]>(({ branchId, token }) => getBills(branchId, token), {
+    events: ['order.status_updated', 'payment.bill_requested', 'payment.status_updated', 'service_request.created'],
+    initial: [],
+    pollMs: 30000,
+  });
+  const bills = resource.data;
   const confirm = useConfirm();
-  const settings = useMemo(() => (typeof window === 'undefined' ? null : readCmsSettings()), []);
-  const canCapturePayment = ['platform_admin', 'owner', 'manager', 'waiter', 'cashier'].includes(settings?.role ?? '');
+  const { role } = useCmsSession();
+  const canCapturePayment = ['platform_admin', 'owner', 'manager', 'waiter', 'cashier'].includes(role);
   const activeBills = useMemo(() => bills.filter((bill) => bill.status !== 'captured'), [bills]);
   const completedBills = useMemo(() => bills.filter((bill) => bill.status === 'captured'), [bills]);
   const completedTotalPages = Math.max(1, Math.ceil(completedBills.length / COMPLETED_PAGE_SIZE));
@@ -47,39 +49,11 @@ export default function BillsPage() {
     return completedBills.slice(start, start + COMPLETED_PAGE_SIZE);
   }, [completedBills, completedPage]);
 
-  async function load(): Promise<void> {
-    if (!settings?.branchId || !settings.token) {
-      setState(failed(new Error('This account is not linked to an outlet yet.')));
-      return;
-    }
-    try {
-      setBills(await getBills(settings.branchId, settings.token));
-      setState(ready);
-    } catch (error) {
-      setState(failed(error, 'Could not load bills.'));
-    }
-  }
-
   useEffect(() => {
     if (completedPage > completedTotalPages) {
       setCompletedPage(completedTotalPages);
     }
   }, [completedPage, completedTotalPages]);
-
-  useEffect(() => {
-    void load();
-    const socket = settings?.token ? createSocketClient(settings.token) : null;
-    socket?.on('order.status_updated', () => void load());
-    socket?.on('payment.bill_requested', () => void load());
-    socket?.on('payment.status_updated', () => void load());
-    socket?.on('service_request.created', () => void load());
-    socket?.connect();
-    const interval = window.setInterval(() => void load(), 30000);
-    return () => {
-      window.clearInterval(interval);
-      socket?.disconnect();
-    };
-  }, []);
 
   function billKey(bill: CmsBill): string {
     return bill.paymentId ?? bill.id ?? bill._id ?? bill.tableSessionId;
@@ -110,16 +84,15 @@ export default function BillsPage() {
       throw new Error('No orders found for this table bill.');
     }
 
-    return requestBill(documentId(firstOrder), settings?.token ?? '');
+    return requestBill(documentId(firstOrder), readCmsContext().token);
   }
 
   async function generateBill(bill: CmsBill): Promise<void> {
-    if (!settings?.token) return;
     const id = billKey(bill);
     setBusy(id);
     try {
       await ensureBillPayment(bill);
-      await load();
+      await resource.reload();
       toast.success('Bill generated');
     } catch (error) {
       toast.error(errorMessage(error, 'Could not generate the bill.'));
@@ -129,7 +102,6 @@ export default function BillsPage() {
   }
 
   async function markBillPaid(bill: CmsBill, method: string): Promise<void> {
-    if (!settings?.token) return;
     const entry = paymentMethods.find((item) => item.method === method);
     const label = entry?.label ?? method;
     const ok = await confirm({
@@ -144,8 +116,8 @@ export default function BillsPage() {
     setBusy(id);
     try {
       const payment = await ensureBillPayment(bill);
-      await markPaymentPaid(documentId(payment), method, settings.token);
-      await load();
+      await markPaymentPaid(documentId(payment), method, readCmsContext().token);
+      await resource.reload();
       toast.success(`Payment captured by ${method}`);
     } catch (error) {
       toast.error(errorMessage(error, 'Could not capture payment.'));
@@ -165,24 +137,20 @@ export default function BillsPage() {
   }
 
   return (
-    <PageShell>
-      <PageHeader
-        description="Orders from the same table session, grouped into one closeout bill."
-        eyebrow="Bills"
-        onRefresh={() => void load()}
-        refreshing={state.status === 'loading'}
-        title="Table bills"
-      />
-
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
-
+    <PageShell
+      description="Orders from the same table session, grouped into one closeout bill."
+      eyebrow="Bills"
+      title="Table bills"
+      resource={resource}
+      what="bills"
+    >
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Pending bills</h2>
           <Badge variant={activeBills.length ? 'warning' : 'secondary'}>{activeBills.length} open</Badge>
         </div>
 
-        {state.status === 'loading' ? (
+        {resource.status === 'loading' ? (
           <LoadingCards count={2} />
         ) : activeBills.length === 0 ? (
           <EmptyState compact description="Completed bills are listed below." icon={Wallet} title="No pending bills" />
@@ -256,7 +224,7 @@ export default function BillsPage() {
       </section>
 
       <SectionCard actions={<Badge variant="success">{completedBills.length} captured</Badge>} title="Completed bills">
-        {state.status === 'loading' ? (
+        {resource.status === 'loading' ? (
           <LoadingRows count={3} />
         ) : completedBills.length === 0 ? (
           <EmptyState compact icon={CircleCheckBig} title="No completed bills yet" />

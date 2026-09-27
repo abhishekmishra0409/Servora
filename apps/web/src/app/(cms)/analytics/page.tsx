@@ -1,64 +1,39 @@
 'use client';
 
 import { BellRing, ChartLine, IndianRupee, ReceiptText, ShoppingBasket } from 'lucide-react';
-import { useEffect, useState } from 'react';
-
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState } from '@/components/error-state';
 import { PageShell } from '@/components/page-shell';
 import { SectionCard } from '@/components/section-card';
 import { StatCard, StatGrid } from '@/components/stat-card';
 import { StatusBadge } from '@/components/status-badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getCmsAnalyticsMenu, getCmsAnalyticsOverview, type CmsAnalyticsOverview } from '@/lib/api-client';
-import { failed, loading, ready, type AsyncState } from '@/lib/async-state';
-import { readCmsSettings } from '@/lib/cms-storage';
 import { money } from '@/lib/format';
-import { createSocketClient } from '@/lib/socket';
+import { useCmsResource } from '@/lib/use-cms-resource';
 
 export default function AnalyticsPage() {
-  const [overview, setOverview] = useState<CmsAnalyticsOverview | null>(null);
-  const [items, setItems] = useState<{ available: boolean; name: string; price: number }[]>([]);
-  const [state, setState] = useState<AsyncState>(loading);
-
-  useEffect(() => {
-    const settings = readCmsSettings();
-    if (!settings.branchId || !settings.token) {
-      setState(failed(new Error('This account is not linked to an outlet yet.')));
-      return;
-    }
-    const load = (): void => {
-      void Promise.all([
-        getCmsAnalyticsOverview(settings.branchId, settings.token),
-        getCmsAnalyticsMenu(settings.branchId, settings.token),
-      ])
-        .then(([nextOverview, menu]) => {
-          setOverview(nextOverview);
-          setItems(menu.items);
-          setState(ready);
-        })
-        .catch((error: unknown) => setState(failed(error, 'Could not load analytics.')));
-    };
-    load();
-    const socket = createSocketClient(settings.token);
-    socket.on('order.created', load);
-    socket.on('order.status_updated', load);
-    socket.connect();
-    return () => {
-      socket.disconnect();
-    };
-  }, []);
+  const resource = useCmsResource<{
+    items: { available: boolean; name: string; price: number }[];
+    overview: CmsAnalyticsOverview | null;
+  }>(
+    async ({ branchId, token }) => {
+      const [overview, menu] = await Promise.all([getCmsAnalyticsOverview(branchId, token), getCmsAnalyticsMenu(branchId, token)]);
+      return { items: menu.items, overview };
+    },
+    { events: ['order.created', 'order.status_updated'], initial: { items: [], overview: null } },
+  );
+  const { items, overview } = resource.data;
 
   return (
     <PageShell
+      resource={resource}
+      what="analytics"
       description="Sales, basket size, live activity, and menu mix for this outlet. Figures update as orders move."
       eyebrow="Analytics"
       title="Analytics"
     >
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} /> : null}
-
-      {state.status === 'loading' ? (
+      {resource.status === 'loading' ? (
         <StatGrid>
           {[0, 1, 2, 3].map((index) => (
             <Skeleton className="h-28 rounded-xl" key={index} />
@@ -85,7 +60,7 @@ export default function AnalyticsPage() {
             },
           ]}
           empty={<EmptyState compact icon={ChartLine} title="No menu data yet" />}
-          loading={state.status === 'loading'}
+          loading={resource.status === 'loading'}
           pageSize={10}
           rowKey={(item) => item.name}
           rows={items}

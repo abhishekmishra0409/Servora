@@ -443,6 +443,22 @@ async function refreshCmsAccessToken(): Promise<string | null> {
   return refreshPromise;
 }
 
+/**
+ * The access token to use right now. When it has been cleared but a refresh
+ * token remains, trades that for a new one instead of treating the user as
+ * signed out. Returns '' only when the session is really gone.
+ */
+export async function ensureCmsAccessToken(): Promise<string> {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  const current = window.localStorage.getItem(cmsTokenKey);
+  if (current) {
+    return current;
+  }
+  return (await refreshCmsAccessToken()) ?? '';
+}
+
 interface ApiErrorPayload {
   error?: { code?: string; details?: Record<string, unknown>; message?: string };
   message?: string;
@@ -980,7 +996,6 @@ export const updateSuperAdminTenantFeatures = (
 
 export const documentId = (value: { _id?: unknown; id?: string }): string =>
   value.id ?? String(value._id ?? '');
-
 
 // --- Roles, session, and plan entitlements --------------------------------
 

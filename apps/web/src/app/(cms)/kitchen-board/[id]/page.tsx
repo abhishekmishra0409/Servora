@@ -3,52 +3,38 @@
 import { ArrowLeft, Circle, CircleCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState } from '@/components/error-state';
 import { LoadingRows } from '@/components/loading-state';
-import { PageHeader } from '@/components/page-header';
 import { PageShell } from '@/components/page-shell';
 import { SectionCard } from '@/components/section-card';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { documentId, getLiveOrders, updateOrderStatus, type LiveOrder } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
-import { readCmsSettings } from '@/lib/cms-storage';
+import { errorMessage } from '@/lib/async-state';
 import { shortId } from '@/lib/format';
 import { formatOrderNumber } from '@/lib/order-number';
 import { cn } from '@/lib/utils';
+import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 export default function KitchenTicketPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [state, setState] = useState<AsyncState>(loading);
-  const [order, setOrder] = useState<LiveOrder | null>(null);
   const [checkedItems, setCheckedItems] = useState<Set<number>>(new Set());
-  const settings = useMemo(() => (typeof window === 'undefined' ? null : readCmsSettings()), []);
-
-  useEffect(() => {
-    if (!settings?.branchId || !settings.token) {
-      setState(failed(new Error('This account is not linked to an outlet yet.')));
-      return;
-    }
-
-    void getLiveOrders(settings.branchId, settings.token)
-      .then((orders) => {
-        setOrder(orders.find((item) => documentId(item) === params.id) ?? null);
-        setState(ready);
-      })
-      .catch((error: unknown) => setState(failed(error, 'Could not load ticket.')));
-  }, [params.id]);
+  const resource = useCmsResource<LiveOrder | null>(
+    async ({ branchId, token }) => (await getLiveOrders(branchId, token)).find((item) => documentId(item) === params.id) ?? null,
+    { deps: [params.id], events: ['order.status_updated'], initial: null },
+  );
+  const order = resource.data;
 
   async function markReady(): Promise<void> {
-    if (!settings?.token || !order) return;
+    if (!order) return;
     setBusy(true);
     try {
-      await updateOrderStatus(documentId(order), 'ready', settings.token);
+      await updateOrderStatus(documentId(order), 'ready', readCmsContext().token);
       toast.success(`${formatOrderNumber(order.orderNo)} marked ready`);
       router.push('/kitchen-board');
     } catch (error) {
@@ -73,25 +59,24 @@ export default function KitchenTicketPage() {
   const allChecked = order ? order.items.every((_, index) => checkedItems.has(index)) : false;
 
   return (
-    <PageShell>
-      <PageHeader
-        actions={
-          <Button asChild size="sm" variant="outline">
-            <Link href="/kitchen-board">
-              <ArrowLeft />
-              Back to board
-            </Link>
-          </Button>
-        }
-        description={order ? `Table ···${shortId(order.tableId)}. Tick each line as it is plated.` : 'Review the items on this ticket.'}
-        eyebrow="Kitchen ticket"
-        title={order ? formatOrderNumber(order.orderNo) : 'Ticket'}
-      />
+    <PageShell
+      actions={
+      <Button asChild size="sm" variant="outline">
+      <Link href="/kitchen-board">
+      <ArrowLeft />
+      Back to board
+      </Link>
+      </Button>
+      }
+      description={order ? `Table ···${shortId(order.tableId)}. Tick each line as it is plated.` : 'Review the items on this ticket.'}
+      eyebrow="Kitchen ticket"
+      title={order ? formatOrderNumber(order.orderNo) : 'Ticket'}
+      resource={resource}
+      what="this ticket"
+    >
+      {resource.status === 'loading' ? <LoadingRows count={3} /> : null}
 
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} /> : null}
-      {state.status === 'loading' ? <LoadingRows count={3} /> : null}
-
-      {state.status === 'ready' && !order ? (
+      {resource.status === 'ready' && !order ? (
         <EmptyState
           action={
             <Button asChild variant="outline">

@@ -1,14 +1,13 @@
 'use client';
 
 import { Archive, Pencil, Plus, Store } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { useCmsSession } from '@/components/cms-session-provider';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState } from '@/components/error-state';
 import { FormField } from '@/components/form-field';
 import { PageShell } from '@/components/page-shell';
 import { PlanLimitNotice, UsageStrip } from '@/components/plan-limit-notice';
@@ -25,13 +24,17 @@ import {
   updateCmsBranch,
   type CmsBranch,
 } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
+import { errorMessage } from '@/lib/async-state';
 import { humanize } from '@/lib/status-tone';
+import { useCmsResource } from '@/lib/use-cms-resource';
 
 export default function BranchesPage() {
   const session = useCmsSession();
-  const [branches, setBranches] = useState<CmsBranch[]>([]);
-  const [state, setState] = useState<AsyncState>(loading);
+  const resource = useCmsResource<CmsBranch[]>(({ tenantId, token }) => getCmsBranches(tenantId, token), {
+    initial: [],
+    scope: 'tenant',
+  });
+  const branches = resource.data;
   const [limitError, setLimitError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState('');
@@ -41,22 +44,6 @@ export default function BranchesPage() {
   const canAdd = session.can('branches:add');
   const canEdit = session.can('branches:edit');
   const canDelete = session.can('branches:delete');
-
-  async function load(): Promise<void> {
-    if (!session.token || !session.tenantId) {
-      return;
-    }
-    try {
-      setBranches(await getCmsBranches(session.tenantId, session.token));
-      setState(ready);
-    } catch (error) {
-      setState(failed(error, 'Could not load outlets.'));
-    }
-  }
-
-  useEffect(() => {
-    void load();
-  }, [session.token, session.tenantId]);
 
   async function create(): Promise<void> {
     if (!name.trim()) {
@@ -71,7 +58,7 @@ export default function BranchesPage() {
       await createCmsBranch({ name: name.trim(), tenantId: session.tenantId }, session.token);
       setName('');
       toast.success('Outlet created');
-      await load();
+      await resource.reload();
       await session.reload();
       await session.refreshEntitlements();
     } catch (error) {
@@ -95,7 +82,7 @@ export default function BranchesPage() {
       await updateCmsBranch(id, { name: editingName.trim() }, session.token);
       setEditingId('');
       toast.success('Outlet renamed');
-      await load();
+      await resource.reload();
       await session.reload();
     } catch (error) {
       toast.error(errorMessage(error, 'Could not rename the outlet.'));
@@ -109,7 +96,7 @@ export default function BranchesPage() {
     try {
       await archiveCmsBranch(id, session.token);
       toast.success('Outlet archived. Its past orders and bills are kept.');
-      await load();
+      await resource.reload();
       await session.reload();
       await session.refreshEntitlements();
     } catch (error) {
@@ -126,11 +113,12 @@ export default function BranchesPage() {
 
   return (
     <PageShell
+      resource={resource}
+      what="outlets"
       description="Each outlet has its own tables, menu, and staff roles. People can hold a different role at each one."
       eyebrow="Outlets"
       title="Your locations"
     >
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
       <PlanLimitNotice error={limitError} resource="outlets" />
       <UsageStrip cap={cap} label="Outlets" used={used} />
 
@@ -153,7 +141,7 @@ export default function BranchesPage() {
         </SectionCard>
       ) : null}
 
-      <SectionCard contentClassName="space-y-0" title={`${branches.length} outlets`}>
+      <SectionCard contentClassName="space-y-0" title={resource.status === 'loading' ? 'Outlets' : `${branches.length} outlets`}>
         <DataTable
           columns={[
             {
@@ -247,7 +235,7 @@ export default function BranchesPage() {
             },
           ]}
           empty={<EmptyState compact description="Create the first outlet above." icon={Store} title="No outlets yet" />}
-          loading={state.status === 'loading'}
+          loading={resource.status === 'loading'}
           rowKey={documentId}
           rows={branches}
           searchPlaceholder="Search outlets"

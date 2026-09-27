@@ -142,6 +142,21 @@ export function LoadingKanban({ columns = 4 }: { columns?: number }): ReactNode 
   );
 }
 
+/** Labelled input placeholders for a form that is still being filled from the server. */
+export function LoadingForm({ className, fields = 3 }: { className?: string; fields?: number }): ReactNode {
+  return (
+    <div aria-busy="true" aria-label="Loading form" className={cn('grid gap-4', className)} role="status">
+      {Array.from({ length: fields }, (_, index) => (
+        <div className="grid gap-2" key={index}>
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-9 w-full" />
+        </div>
+      ))}
+      <span className="sr-only">Loading</span>
+    </div>
+  );
+}
+
 /** Full-page placeholder: header, stat row, and a content panel. Used for route transitions. */
 export function PageSkeleton(): ReactNode {
   return (

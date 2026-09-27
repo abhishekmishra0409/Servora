@@ -2,10 +2,8 @@
 
 import type { ReactNode } from 'react';
 
-import { ErrorState } from '@/components/error-state';
-import { PageHeader } from '@/components/page-header';
 import { PageShell } from '@/components/page-shell';
-import type { AsyncState } from '@/lib/async-state';
+import type { CmsResource } from '@/lib/use-cms-resource';
 
 /** Common frame for every platform console route. */
 export function PlatformPage({
@@ -13,7 +11,7 @@ export function PlatformPage({
   children,
   description,
   onRefresh,
-  refreshing = false,
+  refreshing,
   state,
   title,
 }: {
@@ -21,14 +19,21 @@ export function PlatformPage({
   children: ReactNode;
   description: string;
   onRefresh?: (() => void) | undefined;
-  refreshing?: boolean;
-  state?: AsyncState | undefined;
+  refreshing?: boolean | undefined;
+  state?: Pick<CmsResource<unknown>, 'error' | 'refreshing' | 'reload' | 'status'> | undefined;
   title: string;
 }): ReactNode {
   return (
-    <PageShell>
-      <PageHeader actions={actions} description={description} eyebrow="Platform" onRefresh={onRefresh} refreshing={refreshing} title={title} />
-      {state?.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={onRefresh} /> : null}
+    <PageShell
+      actions={actions}
+      description={description}
+      eyebrow="Platform"
+      onRefresh={onRefresh}
+      refreshing={refreshing}
+      resource={state}
+      title={title}
+      what="platform data"
+    >
       {children}
     </PageShell>
   );

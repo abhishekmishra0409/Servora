@@ -6,11 +6,9 @@ import { toast } from 'sonner';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState } from '@/components/error-state';
 import { FormActions, FormField, FormGrid } from '@/components/form-field';
 import { ImageDropzone } from '@/components/image-dropzone';
 import { LoadingCards } from '@/components/loading-state';
-import { PageHeader } from '@/components/page-header';
 import { PageShell } from '@/components/page-shell';
 import { SectionCard } from '@/components/section-card';
 import { Badge } from '@/components/ui/badge';
@@ -31,9 +29,9 @@ import {
   type CmsMenuCategory,
   type CmsMenuItem,
 } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
-import { readCmsSettings } from '@/lib/cms-storage';
+import { errorMessage } from '@/lib/async-state';
 import { money } from '@/lib/format';
+import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 const maxImageBytes = 5 * 1024 * 1024;
 const slugify = (value: string): string =>
@@ -50,47 +48,26 @@ const emptyForm = {
 };
 
 export default function MenuItemsPage() {
-  const [branchId, setBranchId] = useState('');
-  const [tenantId, setTenantId] = useState('');
-  const [token, setToken] = useState('');
-  const [items, setItems] = useState<CmsMenuItem[]>([]);
-  const [categories, setCategories] = useState<CmsMenuCategory[]>([]);
+  const resource = useCmsResource<{ categories: CmsMenuCategory[]; items: CmsMenuItem[] }>(
+    async ({ branchId, tenantId, token }) => {
+      const [items, categories] = await Promise.all([getCmsMenuItems(branchId, token), getCmsMenuCategories(tenantId, branchId)]);
+      return { categories, items };
+    },
+    { initial: { categories: [], items: [] } },
+  );
+  const { categories, items } = resource.data;
   const [editingId, setEditingId] = useState('');
   const [form, setForm] = useState(emptyForm);
   const [imageFileName, setImageFileName] = useState('');
   const [imageUploadNote, setImageUploadNote] = useState('');
   const [query, setQuery] = useState('');
-  const [state, setState] = useState<AsyncState>(loading);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  async function load(nextBranchId = branchId, nextTenantId = tenantId, nextToken = token): Promise<void> {
-    if (!nextBranchId || !nextTenantId || !nextToken) {
-      setItems([]);
-      setState(failed(new Error('This account is not linked to an outlet yet.')));
-      return;
-    }
-    try {
-      const [nextItems, nextCategories] = await Promise.all([
-        getCmsMenuItems(nextBranchId, nextToken),
-        getCmsMenuCategories(nextTenantId, nextBranchId),
-      ]);
-      setItems(nextItems);
-      setCategories(nextCategories);
-      setForm((current) => ({ ...current, categoryId: current.categoryId || documentId(nextCategories[0] ?? {}) }));
-      setState(ready);
-    } catch (error) {
-      setState(failed(error, 'Could not load menu management data.'));
-    }
-  }
-
+  // Default the category picker once categories arrive.
   useEffect(() => {
-    const settings = readCmsSettings();
-    setBranchId(settings.branchId);
-    setTenantId(settings.tenantId);
-    setToken(settings.token);
-    void load(settings.branchId, settings.tenantId, settings.token);
-  }, []);
+    setForm((current) => ({ ...current, categoryId: current.categoryId || documentId(categories[0] ?? {}) }));
+  }, [categories]);
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -129,6 +106,7 @@ export default function MenuItemsPage() {
   }
 
   async function submit(): Promise<void> {
+    const { branchId, tenantId, token } = readCmsContext();
     if (!tenantId || !branchId || !token || !form.categoryId) {
       toast.error('Pick a category before saving.');
       return;
@@ -161,7 +139,7 @@ export default function MenuItemsPage() {
         await createCmsMenuItem(body, token);
       }
       resetForm();
-      await load();
+      await resource.reload();
       toast.success(wasEditing ? 'Menu item updated' : 'Menu item created');
     } catch (error) {
       toast.error(errorMessage(error, 'Could not save menu item.'));
@@ -171,9 +149,10 @@ export default function MenuItemsPage() {
   }
 
   async function remove(item: CmsMenuItem): Promise<void> {
+    const { token } = readCmsContext();
     try {
       await deleteCmsMenuItem(documentId(item), token);
-      await load();
+      await resource.reload();
       toast.success(`${item.name} deleted`);
     } catch (error) {
       toast.error(errorMessage(error, 'Could not delete menu item.'));
@@ -192,6 +171,7 @@ export default function MenuItemsPage() {
   }
 
   async function uploadImage(file: File | null): Promise<void> {
+    const { token } = readCmsContext();
     if (!file || !token) {
       setImageUploadNote('Choose an image and sign in before uploading.');
       return;
@@ -251,17 +231,13 @@ export default function MenuItemsPage() {
   }
 
   return (
-    <PageShell>
-      <PageHeader
-        description="Dishes, prices, images, dietary tags, and availability for this outlet."
-        eyebrow="Menu"
-        onRefresh={() => void load()}
-        refreshing={state.status === 'loading'}
-        title="Menu items"
-      />
-
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
-
+    <PageShell
+      description="Dishes, prices, images, dietary tags, and availability for this outlet."
+      eyebrow="Menu"
+      title="Menu items"
+      resource={resource}
+      what="the menu"
+    >
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
         <SectionCard
           actions={
@@ -362,7 +338,7 @@ export default function MenuItemsPage() {
         <Badge variant="secondary">{filteredItems.length} items</Badge>
       </div>
 
-      {state.status === 'loading' ? (
+      {resource.status === 'loading' ? (
         <LoadingCards count={6} variant="menu" />
       ) : filteredItems.length === 0 ? (
         <EmptyState

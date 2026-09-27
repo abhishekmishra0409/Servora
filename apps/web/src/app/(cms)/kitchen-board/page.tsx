@@ -1,22 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { ErrorState } from '@/components/error-state';
 import { KanbanBoard } from '@/components/kanban-board';
 import { LoadingKanban } from '@/components/loading-state';
 import { OrderTicket } from '@/components/order-ticket';
-import { PageHeader } from '@/components/page-header';
 import { PageShell } from '@/components/page-shell';
 import { Button } from '@/components/ui/button';
 import { documentId, getLiveOrders, updateOrderStatus, type LiveOrder } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
-import { readCmsSettings } from '@/lib/cms-storage';
+import { errorMessage } from '@/lib/async-state';
 import { elapsedSince } from '@/lib/format';
-import { createSocketClient } from '@/lib/socket';
 import { toneFor } from '@/lib/status-tone';
+import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 const lanes = [
   { next: 'preparing', nextLabel: 'Start preparing', status: 'accepted', title: 'Accepted' },
@@ -25,46 +22,20 @@ const lanes = [
 ];
 
 export default function KitchenBoardPage() {
-  const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [busy, setBusy] = useState('');
-  const [state, setState] = useState<AsyncState>(loading);
-
-  const settings = useMemo(() => (typeof window === 'undefined' ? null : readCmsSettings()), []);
-
-  async function load(): Promise<void> {
-    if (!settings?.branchId || !settings.token) {
-      setState(failed(new Error('This account is not linked to an outlet yet.')));
-      return;
-    }
-    try {
-      const nextOrders = await getLiveOrders(settings.branchId, settings.token);
-      setOrders(nextOrders.filter((order) => ['accepted', 'preparing', 'ready'].includes(order.status)));
-      setState(ready);
-    } catch (error) {
-      setState(failed(error, 'Could not load kitchen tickets.'));
-    }
-  }
-
-  useEffect(() => {
-    void load();
-    const socket = settings?.token ? createSocketClient(settings.token) : null;
-    socket?.on('order.created', () => void load());
-    socket?.on('order.status_updated', () => void load());
-    socket?.connect();
-    const interval = window.setInterval(() => void load(), 30000);
-    return () => {
-      window.clearInterval(interval);
-      socket?.disconnect();
-    };
-  }, []);
+  const resource = useCmsResource<LiveOrder[]>(
+    async ({ branchId, token }) =>
+      (await getLiveOrders(branchId, token)).filter((order) => ['accepted', 'preparing', 'ready'].includes(order.status)),
+    { events: ['order.created', 'order.status_updated'], initial: [], pollMs: 30000 },
+  );
+  const orders = resource.data;
 
   async function advance(order: LiveOrder, nextStatus: string): Promise<void> {
-    if (!settings?.token) return;
     const id = documentId(order);
     setBusy(id);
     try {
-      await updateOrderStatus(id, nextStatus, settings.token);
-      await load();
+      await updateOrderStatus(id, nextStatus, readCmsContext().token);
+      await resource.reload();
     } catch (error) {
       toast.error(errorMessage(error, 'Could not update ticket.'));
     } finally {
@@ -81,18 +52,14 @@ export default function KitchenBoardPage() {
   }));
 
   return (
-    <PageShell>
-      <PageHeader
-        description="Accepted, preparing, and ready tickets from the live queue. Refreshes every 30 seconds."
-        eyebrow="Kitchen"
-        onRefresh={() => void load()}
-        refreshing={state.status === 'loading'}
-        title="Kitchen board"
-      />
-
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
-
-      {state.status === 'loading' ? (
+    <PageShell
+      description="Accepted, preparing, and ready tickets from the live queue. Refreshes every 30 seconds."
+      eyebrow="Kitchen"
+      title="Kitchen board"
+      resource={resource}
+      what="kitchen tickets"
+    >
+      {resource.status === 'loading' ? (
         <LoadingKanban columns={3} />
       ) : (
         <KanbanBoard

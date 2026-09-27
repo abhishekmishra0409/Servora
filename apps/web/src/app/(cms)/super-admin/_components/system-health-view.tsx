@@ -21,7 +21,7 @@ export function SystemHealthView(): ReactNode {
   );
 
   const checks: { detail: string; label: string; ok: boolean }[] = [
-    { detail: apiHealthy ? 'Tenant and plan queries answered.' : state.error ?? 'Waiting for the API.', label: 'API', ok: apiHealthy },
+    { detail: apiHealthy ? 'Tenant and plan queries answered.' : state.error || 'Waiting for the API.', label: 'API', ok: apiHealthy },
     {
       detail: `${stripeConfigured} of ${plans.length} plans have a Stripe product or price.`,
       label: 'Stripe plans',

@@ -1,13 +1,12 @@
 'use client';
 
 import { Pencil, Plus, Tags, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState } from '@/components/error-state';
 import { FormActions, FormField } from '@/components/form-field';
 import { PageShell } from '@/components/page-shell';
 import { SectionCard } from '@/components/section-card';
@@ -22,39 +21,17 @@ import {
   updateCmsMenuCategory,
   type CmsMenuCategory,
 } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
-import { readCmsSettings } from '@/lib/cms-storage';
+import { errorMessage } from '@/lib/async-state';
+import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 export default function MenuCategoriesPage() {
-  const [branchId, setBranchId] = useState('');
-  const [categories, setCategories] = useState<CmsMenuCategory[]>([]);
   const [editingId, setEditingId] = useState('');
   const [form, setForm] = useState({ name: '', sortOrder: '0' });
-  const [state, setState] = useState<AsyncState>(loading);
   const [saving, setSaving] = useState(false);
-  const [tenantId, setTenantId] = useState('');
-  const [token, setToken] = useState('');
-
-  async function load(nextTenantId = tenantId, nextBranchId = branchId): Promise<void> {
-    if (!nextTenantId || !nextBranchId) {
-      setState(failed(new Error('This account is not linked to an outlet yet.')));
-      return;
-    }
-    try {
-      setCategories(await getCmsMenuCategories(nextTenantId, nextBranchId));
-      setState(ready);
-    } catch (error) {
-      setState(failed(error, 'Could not load categories.'));
-    }
-  }
-
-  useEffect(() => {
-    const settings = readCmsSettings();
-    setBranchId(settings.branchId);
-    setTenantId(settings.tenantId);
-    setToken(settings.token);
-    void load(settings.tenantId, settings.branchId);
-  }, []);
+  const resource = useCmsResource<CmsMenuCategory[]>(({ branchId, tenantId }) => getCmsMenuCategories(tenantId, branchId), {
+    initial: [],
+  });
+  const categories = resource.data;
 
   function resetForm(): void {
     setEditingId('');
@@ -67,6 +44,7 @@ export default function MenuCategoriesPage() {
   }
 
   async function submit(): Promise<void> {
+    const { branchId, tenantId, token } = readCmsContext();
     if (!tenantId || !branchId || !token || !form.name.trim()) {
       toast.error('Give the category a name.');
       return;
@@ -81,7 +59,7 @@ export default function MenuCategoriesPage() {
         toast.success('Category created');
       }
       resetForm();
-      await load();
+      await resource.reload();
     } catch (error) {
       toast.error(errorMessage(error, 'Could not save category.'));
     } finally {
@@ -90,10 +68,10 @@ export default function MenuCategoriesPage() {
   }
 
   async function remove(category: CmsMenuCategory): Promise<void> {
-    if (!token) return;
+    const { token } = readCmsContext();
     try {
       await deleteCmsMenuCategory(documentId(category), token);
-      await load();
+      await resource.reload();
       toast.success(`${category.name} deleted`);
     } catch (error) {
       toast.error(errorMessage(error, 'Could not delete category.'));
@@ -103,12 +81,12 @@ export default function MenuCategoriesPage() {
 
   return (
     <PageShell
+      resource={resource}
+      what="categories"
       description="Order and group the guest menu. Deleting a category hides the dishes assigned to it."
       eyebrow="Menu"
       title="Categories"
     >
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
-
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
         <SectionCard
           actions={
@@ -140,7 +118,7 @@ export default function MenuCategoriesPage() {
           </FormActions>
         </SectionCard>
 
-        <SectionCard contentClassName="space-y-0" title={`${categories.length} categories`}>
+        <SectionCard contentClassName="space-y-0" title={resource.status === 'loading' ? 'Categories' : `${categories.length} categories`}>
           <DataTable
             columns={[
               { header: 'Name', key: 'name', render: (category) => <span className="font-semibold">{category.name}</span> },
@@ -181,7 +159,7 @@ export default function MenuCategoriesPage() {
               },
             ]}
             empty={<EmptyState compact description="Add the first category using the form." icon={Tags} title="No categories yet" />}
-            loading={state.status === 'loading'}
+            loading={resource.status === 'loading'}
             rowKey={documentId}
             rows={categories}
             searchPlaceholder="Search categories"

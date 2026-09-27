@@ -9,10 +9,8 @@ import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm-dialog';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState } from '@/components/error-state';
 import { FormActions, FormField, FormGrid } from '@/components/form-field';
 import { LoadingCards } from '@/components/loading-state';
-import { PageHeader } from '@/components/page-header';
 import { PageShell } from '@/components/page-shell';
 import { SectionCard } from '@/components/section-card';
 import { StatCard, StatGrid } from '@/components/stat-card';
@@ -29,10 +27,10 @@ import {
   updateSuperAdminTenantFeatures,
   type CmsSuperAdminTenantDetail,
 } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
-import { readCmsSettings } from '@/lib/cms-storage';
+import { errorMessage } from '@/lib/async-state';
 import { formatDateTime, shortId } from '@/lib/format';
 import { humanize } from '@/lib/status-tone';
+import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 import { blankTenantForm, platformMoney } from './platform-console';
 
@@ -56,30 +54,32 @@ function DetailList({ rows }: { rows: [string, ReactNode][] }): ReactNode {
 export function TenantDetail({ tenantId }: { tenantId: string }): ReactNode {
   const [busy, setBusy] = useState(false);
   const confirm = useConfirm();
-  const [detail, setDetail] = useState<CmsSuperAdminTenantDetail | null>(null);
   const [editingTenant, setEditingTenant] = useState(false);
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
   const [logPage, setLogPage] = useState(1);
-  const [state, setState] = useState<AsyncState>(loading);
   const [tenantForm, setTenantForm] = useState(blankTenantForm);
-  const [token, setToken] = useState('');
 
   useEffect(() => {
     setLogPage(1);
   }, [tenantId]);
 
+  const resource = useCmsResource<CmsSuperAdminTenantDetail | null>(
+    ({ token }) => getSuperAdminTenant(tenantId, token, { auditLimit, auditPage: logPage }),
+    { deps: [tenantId], initial: null, scope: 'account' },
+  );
+  const detail = resource.data;
+  const token = readCmsContext().token;
+
+  // Page changes refetch in the background so the rest of the page stays put.
   useEffect(() => {
-    const settings = readCmsSettings();
-    setToken(settings.token);
-    if (!settings.token) {
-      setState(failed(new Error('Sign in as a platform admin to view tenant detail.')));
-      return;
-    }
-    void loadTenantDetail(settings.token, logPage);
-  }, [tenantId, logPage]);
+    if (resource.status === 'ready') void resource.reload();
+  }, [logPage]);
+
+  useEffect(() => {
+    if (detail) applyDetail(detail);
+  }, [detail]);
 
   function applyDetail(nextDetail: CmsSuperAdminTenantDetail): void {
-    setDetail(nextDetail);
     setEnabledFeatures(nextDetail.tenant.enabledFeatures?.length ? nextDetail.tenant.enabledFeatures : DEFAULT_TENANT_FEATURES);
     setTenantForm({
       defaultCurrency: nextDetail.tenant.defaultCurrency,
@@ -91,18 +91,6 @@ export function TenantDetail({ tenantId }: { tenantId: string }): ReactNode {
       slug: nextDetail.tenant.slug,
       status: nextDetail.tenant.status,
     });
-    setState(ready);
-  }
-
-  async function loadTenantDetail(nextToken = token, nextLogPage = logPage): Promise<void> {
-    setBusy(true);
-    try {
-      applyDetail(await getSuperAdminTenant(tenantId, nextToken, { auditLimit, auditPage: nextLogPage }));
-    } catch (error) {
-      setState(failed(error, 'Could not load tenant detail.'));
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function saveTenantDetails(): Promise<void> {
@@ -128,7 +116,7 @@ export function TenantDetail({ tenantId }: { tenantId: string }): ReactNode {
       applyDetail(await updateSuperAdminTenant(documentId(detail.tenant), tenantForm, token));
       setEditingTenant(false);
       toast.success('Tenant account updated');
-      await loadTenantDetail(token, logPage);
+      await resource.reload();
     } catch (error) {
       toast.error(errorMessage(error, 'Could not update tenant.'));
     } finally {
@@ -142,7 +130,7 @@ export function TenantDetail({ tenantId }: { tenantId: string }): ReactNode {
     try {
       applyDetail(await updateSuperAdminTenantFeatures(documentId(detail.tenant), enabledFeatures, token));
       toast.success('Tenant features updated');
-      await loadTenantDetail(token, logPage);
+      await resource.reload();
     } catch (error) {
       toast.error(errorMessage(error, 'Could not update tenant features.'));
     } finally {
@@ -178,25 +166,22 @@ export function TenantDetail({ tenantId }: { tenantId: string }): ReactNode {
   };
 
   return (
-    <PageShell>
-      <PageHeader
-        actions={
-          <Button asChild size="sm" variant="outline">
-            <Link href="/super-admin/tenants">
-              <ArrowLeft />
-              Back to tenants
-            </Link>
-          </Button>
-        }
-        description="Account details, owner-created staff, subscription revenue, and platform activity for this restaurant."
-        eyebrow="Tenant"
-        onRefresh={() => void loadTenantDetail()}
-        refreshing={busy}
-        title={detail?.tenant.legalName ?? 'Tenant detail'}
-      />
-
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void loadTenantDetail()} /> : null}
-      {state.status === 'loading' ? <LoadingCards count={4} /> : null}
+    <PageShell
+      actions={
+      <Button asChild size="sm" variant="outline">
+      <Link href="/super-admin/tenants">
+      <ArrowLeft />
+      Back to tenants
+      </Link>
+      </Button>
+      }
+      description="Account details, owner-created staff, subscription revenue, and platform activity for this restaurant."
+      eyebrow="Tenant"
+      title={detail?.tenant.legalName ?? 'Tenant detail'}
+      resource={resource}
+      what="this tenant"
+    >
+      {resource.status === 'loading' ? <LoadingCards count={4} /> : null}
 
       {detail ? (
         <>

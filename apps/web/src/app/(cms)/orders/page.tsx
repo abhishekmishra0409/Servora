@@ -1,15 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useCmsSession } from '@/components/cms-session-provider';
 import { useConfirm } from '@/components/confirm-dialog';
-import { ErrorState } from '@/components/error-state';
 import { KanbanBoard } from '@/components/kanban-board';
 import { LoadingKanban } from '@/components/loading-state';
 import { OrderTicket } from '@/components/order-ticket';
-import { PageHeader } from '@/components/page-header';
 import { PageShell } from '@/components/page-shell';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,12 +18,11 @@ import {
   updateOrderStatus,
   type LiveOrder,
 } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
-import { readCmsSettings } from '@/lib/cms-storage';
+import { errorMessage } from '@/lib/async-state';
 import { elapsedSince, money, shortId } from '@/lib/format';
 import { formatOrderNumber } from '@/lib/order-number';
-import { createSocketClient } from '@/lib/socket';
 import { toneFor } from '@/lib/status-tone';
+import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 const statuses = [
   { key: 'pending_confirmation', title: 'Pending confirmation' },
@@ -37,25 +34,12 @@ const statuses = [
 export default function OrdersPage() {
   const { can } = useCmsSession();
   const confirm = useConfirm();
-  const [branchId, setBranchId] = useState('');
-  const [token, setToken] = useState('');
-  const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [busy, setBusy] = useState('');
-  const [state, setState] = useState<AsyncState>(loading);
-
-  useEffect(() => {
-    const settings = readCmsSettings();
-    setBranchId(settings.branchId);
-    setToken(settings.token);
-    void load(settings.branchId, settings.token);
-    const socket = settings.token ? createSocketClient(settings.token) : null;
-    socket?.on('order.created', () => void load(settings.branchId, settings.token));
-    socket?.on('order.status_updated', () => void load(settings.branchId, settings.token));
-    socket?.connect();
-    return () => {
-      socket?.disconnect();
-    };
-  }, []);
+  const resource = useCmsResource<LiveOrder[]>(({ branchId, token }) => getLiveOrders(branchId, token), {
+    events: ['order.created', 'order.status_updated'],
+    initial: [],
+  });
+  const orders = resource.data;
 
   const columns = useMemo(
     () =>
@@ -67,21 +51,6 @@ export default function OrdersPage() {
       })),
     [orders],
   );
-
-  async function load(nextBranchId = branchId, nextToken = token): Promise<void> {
-    if (!nextBranchId || !nextToken) {
-      setOrders([]);
-      setState(failed(new Error('This account is not linked to an outlet yet.')));
-      return;
-    }
-    try {
-      setOrders(await getLiveOrders(nextBranchId, nextToken));
-      setState(ready);
-    } catch (error) {
-      setOrders([]);
-      setState(failed(error, 'Could not load live orders.'));
-    }
-  }
 
   async function act(order: LiveOrder, action: 'confirm' | 'reject' | 'preparing' | 'ready' | 'served'): Promise<void> {
     const id = documentId(order);
@@ -98,6 +67,7 @@ export default function OrdersPage() {
       return;
     }
     setBusy(id);
+    const { token } = readCmsContext();
     try {
       if (action === 'confirm') {
         await confirmOrder(id, token);
@@ -106,7 +76,7 @@ export default function OrdersPage() {
       } else {
         await updateOrderStatus(id, action, token);
       }
-      await load();
+      await resource.reload();
     } catch (error) {
       toast.error(errorMessage(error, 'Order action failed.'));
     } finally {
@@ -119,18 +89,14 @@ export default function OrdersPage() {
   const canMarkServed = can('orders:status-served');
 
   return (
-    <PageShell>
-      <PageHeader
-        description="Confirm, reject, and move active tickets through service."
-        eyebrow="Orders"
-        onRefresh={() => void load()}
-        refreshing={state.status === 'loading'}
-        title="Live orders"
-      />
-
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
-
-      {state.status === 'loading' ? (
+    <PageShell
+      description="Confirm, reject, and move active tickets through service."
+      eyebrow="Orders"
+      title="Live orders"
+      resource={resource}
+      what="live orders"
+    >
+      {resource.status === 'loading' ? (
         <LoadingKanban columns={4} />
       ) : (
         <KanbanBoard

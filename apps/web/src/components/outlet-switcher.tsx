@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, ChevronsUpDown, Settings2 } from 'lucide-react';
+import { Check, ChevronsUpDown, Settings2, Store } from 'lucide-react';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
 
@@ -71,16 +71,24 @@ export function OutletSwitcher({
   switching: boolean;
 }): ReactNode {
   const [open, setOpen] = useState(false);
-  const currentIndex = Math.max(0, branches.findIndex((branch) => branch.branchId === branchId));
-  const current = branches[currentIndex];
+  const foundIndex = branches.findIndex((branch) => branch.branchId === branchId);
+  // No match means no outlet is selected yet; never pretend the first one is active.
+  const currentIndex = Math.max(0, foundIndex);
+  const current = foundIndex >= 0 ? branches[foundIndex] : undefined;
 
   const summary = (
     <>
-      <OutletTile index={currentIndex} name={current?.name ?? 'Workspace'} />
+      {current ? (
+        <OutletTile index={currentIndex} name={current.name} />
+      ) : (
+        <span aria-hidden="true" className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-dashed border-primary/50 text-primary">
+          <Store className="size-4" />
+        </span>
+      )}
       <span className="grid min-w-0 flex-1 text-left leading-tight">
-        <span className="truncate text-sm font-semibold text-foreground">{current?.name ?? 'Workspace'}</span>
-        <span className="truncate text-xs text-muted-foreground">
-          {switching ? 'Switching outlet…' : current ? `${humanize(current.roleKey)} access` : 'No outlet selected'}
+        <span className="truncate text-sm font-semibold text-foreground">{current?.name ?? 'Choose an outlet'}</span>
+        <span className={cn('truncate text-xs', current ? 'text-muted-foreground' : 'text-primary')}>
+          {switching ? 'Switching outlet…' : current ? `${humanize(current.roleKey)} access` : `${branches.length} available`}
         </span>
       </span>
     </>
@@ -111,7 +119,7 @@ export function OutletSwitcher({
           'flex w-full items-center gap-3 rounded-xl border bg-card px-3 py-2.5 text-left shadow-card transition-colors',
           'hover:border-primary/40 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
           'disabled:cursor-wait disabled:opacity-70',
-          open && 'border-primary/50 bg-accent/30',
+          (open || !current) && 'border-primary/50 bg-accent/30',
         )}
         disabled={switching}
       >

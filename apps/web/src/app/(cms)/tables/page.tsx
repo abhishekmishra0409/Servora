@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { useCmsSession } from '@/components/cms-session-provider';
 import { useConfirm } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState, NoticeBanner } from '@/components/error-state';
+import { NoticeBanner } from '@/components/error-state';
 import { FormActions, FormField } from '@/components/form-field';
 import { LoadingCards } from '@/components/loading-state';
 import { PageShell } from '@/components/page-shell';
@@ -27,8 +27,8 @@ import {
 import { errorMessage } from '@/lib/async-state';
 import { isLocalhostOrigin } from '@/lib/customer-origin';
 import { downloadTableQrPdf, downloadTableQrPng, type TableQrCard } from '@/lib/qr-download';
-import { createSocketClient } from '@/lib/socket';
 import { useTableQr } from '@/lib/use-table-qr';
+import { readCmsContext } from '@/lib/use-cms-resource';
 
 export default function TablesPage() {
   const session = useCmsSession();
@@ -40,7 +40,7 @@ export default function TablesPage() {
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState('');
 
-  const { branchId, tenantId, token } = session;
+  const { branchId, tenantId, token } = readCmsContext();
   const canAdd = session.can('tables:add');
   const canEdit = session.can('tables:edit');
   const canDelete = session.can('tables:delete');
@@ -53,21 +53,6 @@ export default function TablesPage() {
       floorId: current.floorId || (qr.tables.find((table) => table.floorId)?.floorId ?? ''),
     }));
   }, [qr.tables]);
-
-  useEffect(() => {
-    const socket = token ? createSocketClient(token) : null;
-
-    socket?.on('table.status_changed', () => void qr.reload());
-    ['floor.changed', 'order.created', 'order.status_updated', 'payment.status_updated'].forEach((event) => {
-      socket?.on(event, () => void qr.reload());
-    });
-    socket?.connect();
-
-    return () => {
-      socket?.disconnect();
-    };
-    // Re-subscribe only when the session token changes; qr.reload is stable.
-  }, [token]);
 
   function resetForm(): void {
     setEditingId('');
@@ -153,8 +138,12 @@ export default function TablesPage() {
       tone: 'warning',
     });
     if (!ok) return;
-    await qr.regenerate(table);
-    toast.success(`New QR code issued for table ${table.tableNo}`);
+    try {
+      await qr.regenerate(table);
+      toast.success(`New QR code issued for table ${table.tableNo}`);
+    } catch (error) {
+      toast.error(errorMessage(error, 'Could not regenerate the QR code.'));
+    }
   }
 
   /** Everything the downloaded artwork prints, resolved from live data. */
@@ -199,11 +188,12 @@ export default function TablesPage() {
   const used = session.entitlements?.usage.tables ?? qr.tables.length;
   const atCap = cap > 0 && used >= cap;
   const downloadable = qr.tables.filter((table) => table.qrToken).length;
-  const isLoading = qr.message === 'Loading tables...';
-  const loadError = !isLoading && qr.message && qr.tables.length === 0 && !qr.message.startsWith('No tables') ? qr.message : '';
+  const isLoading = qr.resource.status === 'loading';
 
   return (
     <PageShell
+      resource={qr.resource}
+      what="tables"
       actions={
         downloadable > 0 ? (
           <Button disabled={downloading !== ''} onClick={() => void downloadAll()} type="button" variant="outline">
@@ -216,7 +206,6 @@ export default function TablesPage() {
       eyebrow="Tables"
       title="Tables and QR codes"
     >
-      {loadError ? <ErrorState message={loadError} onRetry={() => void qr.reload()} /> : null}
       <PlanLimitNotice error={limitError} resource="tables" />
       <UsageStrip cap={cap} label="Tables" used={used} />
 

@@ -1,12 +1,11 @@
 'use client';
 
 import { CircleCheck, CreditCard } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { useCmsSession } from '@/components/cms-session-provider';
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState } from '@/components/error-state';
 import { LoadingCards } from '@/components/loading-state';
 import { PageShell } from '@/components/page-shell';
 import { UsageMeter } from '@/components/plan-limit-notice';
@@ -22,10 +21,10 @@ import {
   type CmsBillingSummary,
   type CmsSubscriptionPlan,
 } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
-import { readCmsSettings } from '@/lib/cms-storage';
+import { errorMessage } from '@/lib/async-state';
 import { money } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 const USAGE_ROWS: [string, string][] = [
   ['employees', 'Staff accounts'],
@@ -44,28 +43,14 @@ const formatLimit = (value?: number, label = ''): string => {
 export default function SubscriptionPage() {
   const { entitlements } = useCmsSession();
   const [busy, setBusy] = useState(false);
-  const [summary, setSummary] = useState<CmsBillingSummary | null>(null);
-  const [state, setState] = useState<AsyncState>(loading);
-  const [tenantId, setTenantId] = useState('');
-  const [token, setToken] = useState('');
-
-  useEffect(() => {
-    const settings = readCmsSettings();
-    setTenantId(settings.tenantId);
-    setToken(settings.token);
-    if (!settings.tenantId || !settings.token) {
-      setState(failed(new Error('This account is not linked to a restaurant yet.')));
-      return;
-    }
-    void getCmsBillingSummary(settings.tenantId, settings.token)
-      .then((nextSummary) => {
-        setSummary(nextSummary);
-        setState(ready);
-      })
-      .catch((error: unknown) => setState(failed(error, 'Could not load subscription.')));
-  }, []);
+  const resource = useCmsResource<CmsBillingSummary | null>(({ tenantId, token }) => getCmsBillingSummary(tenantId, token), {
+    initial: null,
+    scope: 'tenant',
+  });
+  const summary = resource.data;
 
   async function openCheckout(plan: CmsSubscriptionPlan): Promise<void> {
+    const { tenantId, token } = readCmsContext();
     if (!tenantId || !token) return;
     setBusy(true);
     try {
@@ -78,6 +63,7 @@ export default function SubscriptionPage() {
   }
 
   async function openCustomerPortal(): Promise<void> {
+    const { tenantId, token } = readCmsContext();
     if (!tenantId || !token) return;
     setBusy(true);
     try {
@@ -95,12 +81,12 @@ export default function SubscriptionPage() {
 
   return (
     <PageShell
+      resource={resource}
+      what="your subscription"
       description="Restore workspace access, upgrade when the restaurant grows, and manage payment details through Stripe."
       eyebrow="Subscription"
       title="Plan and billing"
     >
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} /> : null}
-
       {paymentRequired ? (
         <Card className="border-warning/40 bg-warning-foreground shadow-card">
           <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -163,7 +149,7 @@ export default function SubscriptionPage() {
         </SectionCard>
       </section>
 
-      {state.status === 'loading' ? (
+      {resource.status === 'loading' ? (
         <LoadingCards count={3} variant="plan" />
       ) : plans.length === 0 ? (
         <EmptyState description="Contact platform support to enable plans for this restaurant." icon={CreditCard} title="No plans available" />

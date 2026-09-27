@@ -2,14 +2,13 @@
 
 import { ArrowRight, Pencil, Plus, ShieldCheck, Trash2, Users } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { useCmsSession } from '@/components/cms-session-provider';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState } from '@/components/error-state';
 import { FormActions, FormField, FormGrid } from '@/components/form-field';
 import { PageShell } from '@/components/page-shell';
 import { PlanLimitNotice, UsageStrip } from '@/components/plan-limit-notice';
@@ -29,8 +28,9 @@ import {
   type CmsRole,
   type CmsStaffMember,
 } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
+import { errorMessage } from '@/lib/async-state';
 import { humanize } from '@/lib/status-tone';
+import { useCmsResource } from '@/lib/use-cms-resource';
 
 const emptyForm = { active: true, email: '', name: '', password: '', role: 'waiter' };
 
@@ -38,9 +38,6 @@ export default function StaffPage() {
   const session = useCmsSession();
   const [editingId, setEditingId] = useState('');
   const [form, setForm] = useState(emptyForm);
-  const [staff, setStaff] = useState<CmsStaffMember[]>([]);
-  const [roles, setRoles] = useState<CmsRole[]>([]);
-  const [state, setState] = useState<AsyncState>(loading);
   const [limitError, setLimitError] = useState<ApiError | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -53,33 +50,17 @@ export default function StaffPage() {
   const canDelete = session.can('staff:delete');
   const canManageRoles = session.can('roles:view');
 
-  async function load(): Promise<void> {
-    if (!branchId || !token) {
-      setState(failed(new Error('This account is not linked to an outlet yet.')));
-      return;
-    }
-
-    try {
-      setStaff(await getCmsStaff(branchId, token));
-      setState(ready);
-    } catch (error) {
-      setState(failed(error, 'Could not load staff.'));
-    }
-
-    // The role picker must offer this tenant's custom roles, not a hardcoded
-    // list. A user without roles:view simply keeps the built-in names.
-    if (canManageRoles && tenantId) {
-      try {
-        setRoles(await getCmsRoles(tenantId, token));
-      } catch {
-        setRoles([]);
-      }
-    }
-  }
-
-  useEffect(() => {
-    void load();
-  }, [branchId, token, tenantId, canManageRoles]);
+  const resource = useCmsResource<{ roles: CmsRole[]; staff: CmsStaffMember[] }>(
+    async (context) => {
+      const staff = await getCmsStaff(context.branchId, context.token);
+      // The role picker must offer this tenant's custom roles, not a hardcoded
+      // list. A user without roles:view simply keeps the built-in names.
+      const roles = canManageRoles ? await getCmsRoles(context.tenantId, context.token).catch(() => []) : [];
+      return { roles, staff };
+    },
+    { deps: [branchId, canManageRoles], initial: { roles: [], staff: [] } },
+  );
+  const { roles, staff } = resource.data;
 
   function resetForm(): void {
     setEditingId('');
@@ -119,7 +100,7 @@ export default function StaffPage() {
       }
 
       resetForm();
-      await load();
+      await resource.reload();
       await session.refreshEntitlements();
     } catch (error) {
       if (error instanceof ApiError && error.code === 'PLAN_LIMIT_REACHED') {
@@ -137,7 +118,7 @@ export default function StaffPage() {
     try {
       await deleteCmsStaff(member.id, token);
       toast.success(`${member.name} removed`);
-      await load();
+      await resource.reload();
       await session.refreshEntitlements();
     } catch (error) {
       toast.error(errorMessage(error, 'Could not remove staff member.'));
@@ -154,6 +135,8 @@ export default function StaffPage() {
 
   return (
     <PageShell
+      resource={resource}
+      what="staff"
       actions={
         canManageRoles ? (
           <Button asChild variant="outline">
@@ -168,7 +151,6 @@ export default function StaffPage() {
       eyebrow="Team"
       title="Staff"
     >
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
       <PlanLimitNotice error={limitError} resource="staff accounts" />
       <UsageStrip cap={staffCap} label="Staff accounts" used={staffUsed} />
 
@@ -276,7 +258,7 @@ export default function StaffPage() {
         </SectionCard>
       </section>
 
-      <SectionCard contentClassName="space-y-0" title={state.status === 'loading' ? 'Team' : `${staff.length} ${staff.length === 1 ? 'person' : 'people'}`}>
+      <SectionCard contentClassName="space-y-0" title={resource.status === 'loading' ? 'Team' : `${staff.length} ${staff.length === 1 ? 'person' : 'people'}`}>
         <DataTable
           columns={[
             {
@@ -325,7 +307,7 @@ export default function StaffPage() {
             },
           ]}
           empty={<EmptyState compact description="Add the first team member using the form." icon={Users} title="No staff yet" />}
-          loading={state.status === 'loading'}
+          loading={resource.status === 'loading'}
           pageSize={10}
           rowKey={(member) => member.id}
           rows={staff}

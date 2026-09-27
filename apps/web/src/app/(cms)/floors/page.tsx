@@ -1,12 +1,11 @@
 'use client';
 
 import { Layers, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
-import { ErrorState } from '@/components/error-state';
 import { FormActions, FormField } from '@/components/form-field';
 import { LoadingRows } from '@/components/loading-state';
 import { PageShell } from '@/components/page-shell';
@@ -14,35 +13,15 @@ import { SectionCard } from '@/components/section-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { createCmsFloor, deleteCmsFloor, documentId, getCmsFloors, updateCmsFloor, type CmsFloor } from '@/lib/api-client';
-import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
-import { readCmsSettings } from '@/lib/cms-storage';
+import { errorMessage } from '@/lib/async-state';
+import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 export default function FloorsPage() {
   const [editingId, setEditingId] = useState('');
-  const [floors, setFloors] = useState<CmsFloor[]>([]);
   const [form, setForm] = useState({ name: '', sortOrder: '0' });
-  const [state, setState] = useState<AsyncState>(loading);
   const [saving, setSaving] = useState(false);
-  const [settings, setSettings] = useState({ branchId: '', tenantId: '', token: '' });
-
-  async function load(nextSettings = settings): Promise<void> {
-    if (!nextSettings.branchId || !nextSettings.token) {
-      setState(failed(new Error('This account is not linked to an outlet yet.')));
-      return;
-    }
-    try {
-      setFloors(await getCmsFloors(nextSettings.branchId, nextSettings.token));
-      setState(ready);
-    } catch (error) {
-      setState(failed(error, 'Could not load floors.'));
-    }
-  }
-
-  useEffect(() => {
-    const nextSettings = readCmsSettings();
-    setSettings(nextSettings);
-    void load(nextSettings);
-  }, []);
+  const resource = useCmsResource<CmsFloor[]>(({ branchId, token }) => getCmsFloors(branchId, token), { initial: [] });
+  const floors = resource.data;
 
   function resetForm(): void {
     setEditingId('');
@@ -50,6 +29,7 @@ export default function FloorsPage() {
   }
 
   async function submit(): Promise<void> {
+    const settings = readCmsContext();
     if (!settings.branchId || !settings.tenantId || !settings.token || !form.name.trim()) {
       toast.error('Give the floor a name.');
       return;
@@ -68,7 +48,7 @@ export default function FloorsPage() {
         toast.success('Floor created');
       }
       resetForm();
-      await load();
+      await resource.reload();
     } catch (error) {
       toast.error(errorMessage(error, 'Could not save floor.'));
     } finally {
@@ -77,10 +57,10 @@ export default function FloorsPage() {
   }
 
   async function remove(floor: CmsFloor): Promise<void> {
-    if (!settings.token) return;
+    const settings = readCmsContext();
     try {
       await deleteCmsFloor(documentId(floor), settings.token);
-      await load();
+      await resource.reload();
       toast.success(`${floor.name} deleted`);
     } catch (error) {
       toast.error(errorMessage(error, 'Could not delete floor.'));
@@ -90,12 +70,12 @@ export default function FloorsPage() {
 
   return (
     <PageShell
+      resource={resource}
+      what="floors"
       description="Group tables into dining areas so table setup and QR codes stay organised for the floor team."
       eyebrow="Floors"
       title="Dining areas"
     >
-      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
-
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
         <SectionCard
           actions={
@@ -121,8 +101,8 @@ export default function FloorsPage() {
           </FormActions>
         </SectionCard>
 
-        <SectionCard title={`${floors.length} floors`}>
-          {state.status === 'loading' ? (
+        <SectionCard title={resource.status === 'loading' ? 'Floors' : `${floors.length} floors`}>
+          {resource.status === 'loading' ? (
             <LoadingRows count={3} />
           ) : floors.length === 0 ? (
             <EmptyState compact description="Add the first floor using the form." icon={Layers} title="No floors yet" />
