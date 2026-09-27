@@ -20,12 +20,19 @@ export const ACTION_LABELS: Record<ScreenAction, string> = {
   view: 'View',
 };
 
-export type ScreenGroup = 'operations' | 'menu' | 'admin';
+/**
+ * Categories used by the sidebar and the role builder, in display order.
+ * Screens inside a group appear in the order they are listed in `SCREENS`.
+ */
+export type ScreenGroup = 'overview' | 'service' | 'floor' | 'menu' | 'team' | 'business';
 
 export const SCREEN_GROUPS: { key: ScreenGroup; label: string }[] = [
-  { key: 'operations', label: 'Operations' },
+  { key: 'overview', label: 'Overview' },
+  { key: 'service', label: 'Live service' },
+  { key: 'floor', label: 'Floor' },
   { key: 'menu', label: 'Menu' },
-  { key: 'admin', label: 'Administration' },
+  { key: 'team', label: 'Team' },
+  { key: 'business', label: 'Business' },
 ];
 
 export interface ScreenAdvancedAction {
@@ -53,12 +60,20 @@ export interface ScreenDefinition {
 export const SCREENS: ScreenDefinition[] = [
   {
     actions: ['view'],
-    group: 'operations',
+    group: 'overview',
     href: '/dashboard',
     icon: 'dashboard',
     key: 'dashboard',
     label: 'Dashboard',
     locked: true,
+  },
+  {
+    actions: ['view'],
+    group: 'overview',
+    href: '/analytics',
+    icon: 'insights',
+    key: 'analytics',
+    label: 'Analytics',
   },
   {
     actions: ['view', 'edit'],
@@ -69,7 +84,7 @@ export const SCREENS: ScreenDefinition[] = [
       { key: 'status-ready', label: 'Move to ready' },
       { key: 'status-served', label: 'Mark served' },
     ],
-    group: 'operations',
+    group: 'service',
     href: '/orders',
     icon: 'receipt_long',
     key: 'orders',
@@ -81,11 +96,20 @@ export const SCREENS: ScreenDefinition[] = [
       { key: 'status-preparing', label: 'Move to preparing' },
       { key: 'status-ready', label: 'Move to ready' },
     ],
-    group: 'operations',
+    group: 'service',
     href: '/kitchen-board',
     icon: 'skillet',
     key: 'kitchen',
     label: 'Kitchen Board',
+  },
+  {
+    actions: ['view'],
+    advanced: [{ key: 'resolve', label: 'Resolve requests' }],
+    group: 'service',
+    href: '/service-requests',
+    icon: 'support_agent',
+    key: 'service-requests',
+    label: 'Requests',
   },
   {
     actions: ['view'],
@@ -95,7 +119,7 @@ export const SCREENS: ScreenDefinition[] = [
       { key: 'mark-cash-paid', label: 'Take cash payment' },
       { key: 'checkout', label: 'Create card checkout' },
     ],
-    group: 'operations',
+    group: 'service',
     href: '/bills',
     icon: 'payments',
     key: 'bills',
@@ -107,7 +131,7 @@ export const SCREENS: ScreenDefinition[] = [
       { key: 'regenerate-qr', label: 'Regenerate table QR' },
       { key: 'download-qr', label: 'Download QR artwork' },
     ],
-    group: 'operations',
+    group: 'floor',
     href: '/tables',
     icon: 'table_restaurant',
     key: 'tables',
@@ -115,28 +139,11 @@ export const SCREENS: ScreenDefinition[] = [
   },
   {
     actions: ['view', 'add', 'edit', 'delete'],
-    group: 'operations',
+    group: 'floor',
     href: '/floors',
     icon: 'floor',
     key: 'floors',
     label: 'Floors',
-  },
-  {
-    actions: ['view'],
-    advanced: [{ key: 'resolve', label: 'Resolve requests' }],
-    group: 'operations',
-    href: '/service-requests',
-    icon: 'support_agent',
-    key: 'service-requests',
-    label: 'Requests',
-  },
-  {
-    actions: ['view', 'add', 'edit', 'delete'],
-    group: 'menu',
-    href: '/menu/categories',
-    icon: 'category',
-    key: 'menu-categories',
-    label: 'Categories',
   },
   {
     actions: ['view', 'add', 'edit', 'delete'],
@@ -150,22 +157,22 @@ export const SCREENS: ScreenDefinition[] = [
   {
     actions: ['view', 'add', 'edit', 'delete'],
     group: 'menu',
+    href: '/menu/categories',
+    icon: 'category',
+    key: 'menu-categories',
+    label: 'Categories',
+  },
+  {
+    actions: ['view', 'add', 'edit', 'delete'],
+    group: 'menu',
     href: '/menu/schedules',
     icon: 'schedule',
     key: 'menu-schedules',
     label: 'Schedules',
   },
   {
-    actions: ['view'],
-    group: 'admin',
-    href: '/analytics',
-    icon: 'insights',
-    key: 'analytics',
-    label: 'Analytics',
-  },
-  {
     actions: ['view', 'add', 'edit', 'delete'],
-    group: 'admin',
+    group: 'team',
     href: '/staff',
     icon: 'group',
     key: 'staff',
@@ -173,7 +180,7 @@ export const SCREENS: ScreenDefinition[] = [
   },
   {
     actions: ['view', 'add', 'edit', 'delete'],
-    group: 'admin',
+    group: 'team',
     href: '/staff/roles',
     icon: 'admin_panel_settings',
     key: 'roles',
@@ -181,7 +188,7 @@ export const SCREENS: ScreenDefinition[] = [
   },
   {
     actions: ['view', 'add', 'edit', 'delete'],
-    group: 'admin',
+    group: 'business',
     href: '/branches',
     icon: 'storefront',
     key: 'branches',
@@ -189,24 +196,24 @@ export const SCREENS: ScreenDefinition[] = [
   },
   {
     actions: ['view'],
-    group: 'admin',
-    href: '/audit-logs',
-    icon: 'fact_check',
-    key: 'audit-logs',
-    label: 'Audit Logs',
-  },
-  {
-    actions: ['view'],
     advanced: [{ key: 'manage', label: 'Change plan and payment' }],
-    group: 'admin',
+    group: 'business',
     href: '/subscription',
     icon: 'workspace_premium',
     key: 'subscription',
     label: 'Subscription',
   },
   {
+    actions: ['view'],
+    group: 'business',
+    href: '/audit-logs',
+    icon: 'fact_check',
+    key: 'audit-logs',
+    label: 'Audit Logs',
+  },
+  {
     actions: ['view', 'edit'],
-    group: 'admin',
+    group: 'business',
     href: '/settings',
     icon: 'settings',
     key: 'settings',
@@ -216,7 +223,7 @@ export const SCREENS: ScreenDefinition[] = [
   {
     actions: ['view'],
     advanced: [{ key: 'manage', label: 'Manage the platform' }],
-    group: 'admin',
+    group: 'business',
     href: '/super-admin',
     icon: 'shield_person',
     key: 'platform',

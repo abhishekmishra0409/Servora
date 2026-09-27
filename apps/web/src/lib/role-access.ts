@@ -1,13 +1,19 @@
 import {
   isPlatformRoleKey,
   permissionsForBuiltinRole,
+  SCREEN_GROUPS,
   SCREENS,
   expandPermissions,
-  type ScreenGroup,
 } from '@restaurent/shared';
 
+export interface NavGroup {
+  key: string;
+  label: string;
+}
+
 export interface AppNavLink {
-  group: ScreenGroup;
+  /** Sidebar category key; see `navGroupsFor`. */
+  group: string;
   href: string;
   icon: string;
   label: string;
@@ -32,16 +38,50 @@ export const appNavLinks: AppNavLink[] = SCREENS.filter(
   screen: screen.key,
 }));
 
+/** Categories for the platform console, in display order. */
+export const PLATFORM_NAV_GROUPS: NavGroup[] = [
+  { key: 'platform-overview', label: 'Overview' },
+  { key: 'platform-tenants', label: 'Tenants & billing' },
+  { key: 'platform-system', label: 'System' },
+];
+
 /** Platform consoles are client-side only and never routed through tenant roles. */
 export const platformNavLinks: AppNavLink[] = [
-  { group: 'admin', href: '/super-admin', icon: 'dashboard', label: 'Dashboard', screen: 'platform' },
-  { group: 'admin', href: '/super-admin/tenants', icon: 'apartment', label: 'Tenants', screen: 'platform' },
-  { group: 'admin', href: '/super-admin/system-health', icon: 'monitor_heart', label: 'System Health', screen: 'platform' },
-  { group: 'admin', href: '/super-admin/subscriptions', icon: 'workspace_premium', label: 'Manage Subscription', screen: 'platform' },
-  { group: 'admin', href: '/super-admin/billing', icon: 'payments', label: 'Billing', screen: 'platform' },
-  { group: 'admin', href: '/super-admin/audit-logs', icon: 'manage_search', label: 'Audit Logs', screen: 'platform' },
-  { group: 'admin', href: '/super-admin/settings', icon: 'settings', label: 'Settings', screen: 'platform' },
+  { group: 'platform-overview', href: '/super-admin', icon: 'dashboard', label: 'Dashboard', screen: 'platform' },
+  { group: 'platform-overview', href: '/super-admin/system-health', icon: 'monitor_heart', label: 'System Health', screen: 'platform' },
+  { group: 'platform-tenants', href: '/super-admin/tenants', icon: 'apartment', label: 'Tenants', screen: 'platform' },
+  { group: 'platform-tenants', href: '/super-admin/subscriptions', icon: 'workspace_premium', label: 'Subscription plans', screen: 'platform' },
+  { group: 'platform-tenants', href: '/super-admin/billing', icon: 'payments', label: 'Billing', screen: 'platform' },
+  { group: 'platform-system', href: '/super-admin/audit-logs', icon: 'manage_search', label: 'Audit Logs', screen: 'platform' },
+  { group: 'platform-system', href: '/super-admin/settings', icon: 'settings', label: 'Settings', screen: 'platform' },
 ];
+
+export const navGroupsFor = (role: string): NavGroup[] =>
+  isPlatformRoleKey(role) ? PLATFORM_NAV_GROUPS : SCREEN_GROUPS;
+
+export interface NavSection extends NavGroup {
+  links: AppNavLink[];
+}
+
+/**
+ * Buckets visible links into their categories, in category order, dropping
+ * categories the user has nothing to open in. A link whose group is unknown
+ * falls into a trailing "More" section rather than disappearing.
+ */
+export function groupNavLinks(links: AppNavLink[], groups: NavGroup[]): NavSection[] {
+  const known = new Set(groups.map((group) => group.key));
+  const sections: NavSection[] = groups.map((group) => ({
+    ...group,
+    links: links.filter((link) => link.group === group.key),
+  }));
+  const strays = links.filter((link) => !known.has(link.group));
+
+  if (strays.length > 0) {
+    sections.push({ key: 'more', label: 'More', links: strays });
+  }
+
+  return sections.filter((section) => section.links.length > 0);
+}
 
 export const viewPermission = (screen: string): string => `${screen}:view`;
 
