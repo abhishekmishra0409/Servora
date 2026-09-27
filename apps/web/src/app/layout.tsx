@@ -1,28 +1,57 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
+import { Fraunces, Inter } from 'next/font/google';
 
-import '../app/globals.css';
-import { PwaBootstrap } from '../components/pwa-bootstrap';
+import { Toaster } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { PwaBootstrap } from '@/components/pwa-bootstrap';
+
+import './globals.css';
+
+const inter = Inter({
+  display: 'swap',
+  subsets: ['latin'],
+  variable: '--font-inter',
+});
+
+const fraunces = Fraunces({
+  axes: ['opsz'],
+  display: 'swap',
+  subsets: ['latin'],
+  variable: '--font-fraunces',
+});
 
 export const metadata: Metadata = {
-  description: 'Restaurant CMS and QR ordering workspace.',
-  title: 'Restaurent SaaS',
+  applicationName: 'Servora',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Servora',
+  },
+  description: 'Restaurant operations and QR table ordering, from the kitchen to the table.',
+  manifest: '/manifest.webmanifest',
+  title: {
+    default: 'Servora',
+    template: '%s · Servora',
+  },
+};
+
+export const viewport: Viewport = {
+  initialScale: 1,
+  themeColor: '#b84a2b',
+  viewportFit: 'cover',
+  width: 'device-width',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }): ReactNode {
   return (
-    <html lang="en">
-      <head>
-        <link href="https://fonts.googleapis.com" rel="preconnect" />
-        <link crossOrigin="" href="https://fonts.gstatic.com" rel="preconnect" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html className={`${inter.variable} ${fraunces.variable}`} lang="en">
       <body>
-        <PwaBootstrap />
-        {children}
+        <TooltipProvider delayDuration={200}>
+          <PwaBootstrap />
+          {children}
+          <Toaster />
+        </TooltipProvider>
       </body>
     </html>
   );
