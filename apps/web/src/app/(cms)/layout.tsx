@@ -1,14 +1,21 @@
-"use client";
+'use client';
 
-import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { CreditCard, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
 
-import { CmsSessionProvider, useCmsSession } from '../../components/cms-session-provider';
-import { documentId, getCmsTenants, switchCmsBranch } from '../../lib/api-client';
-import { clearCmsSettings, readCmsSettings, writeCmsSettings } from '../../lib/cms-storage';
-import { canAccessPathWithPermissions, linksForPermissions } from '../../lib/role-access';
+import { AppShell } from '@/components/app-shell';
+import { CmsSessionProvider, useCmsSession } from '@/components/cms-session-provider';
+import { EmptyState } from '@/components/empty-state';
+import { PageLoading } from '@/components/loading-state';
+import { PageShell } from '@/components/page-shell';
+import { Button } from '@/components/ui/button';
+import { documentId, getCmsTenants, switchCmsBranch } from '@/lib/api-client';
+import { clearCmsSettings, readCmsSettings, writeCmsSettings } from '@/lib/cms-storage';
+import { canAccessPathWithPermissions, linksForPermissions } from '@/lib/role-access';
+import { humanize } from '@/lib/status-tone';
 
 export default function CmsLayout({ children }: { children: ReactNode }): ReactNode {
   return (
@@ -71,18 +78,14 @@ function CmsChrome({ children }: { children: ReactNode }): ReactNode {
       await session.reload();
       router.refresh();
     } catch {
-      // Staying on the current outlet is the safe failure mode.
+      toast.error('Could not switch outlet. You are still on the current one.');
     } finally {
       setSwitching(false);
     }
   }
 
   if (!checkedAuth) {
-    return (
-      <main className="page-shell">
-        <p className="notice-text">Checking session...</p>
-      </main>
-    );
+    return <PageLoading label="Checking session" />;
   }
 
   const links = linksForPermissions(session.permissions, role);
@@ -93,111 +96,60 @@ function CmsChrome({ children }: { children: ReactNode }): ReactNode {
   const allowed =
     canAccessPathWithPermissions(session.permissions, role, pathname) &&
     (!subscriptionBlocked || subscriptionRecoveryPath);
-  const currentBranch = session.branches.find((branch) => branch.branchId === session.branchId);
+
+  const banner = showSubscriptionWarning ? (
+    <div
+      className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-destructive/20 bg-destructive/10 px-4 py-3 text-sm md:px-8"
+      role="alert"
+    >
+      <span className="inline-flex items-center gap-2 font-semibold text-destructive">
+        <CreditCard aria-hidden="true" className="size-4" />
+        Subscription needs attention
+      </span>
+      <span className="text-muted-foreground">
+        Your subscription is cancelled, suspended, or payment failed. Update billing to restore workspace access.
+      </span>
+      <Button asChild className="ml-auto" size="sm" variant="outline">
+        <Link href="/subscription">Open billing</Link>
+      </Button>
+    </div>
+  ) : null;
 
   return (
-    <div className="cms-shell">
-      <aside className="cms-sidebar">
-        <Link className="cms-sidebar__brand" href={isPlatformRole ? '/super-admin' : '/dashboard'}>
-          <span className="material-symbols-outlined cms-sidebar__brand-icon" aria-hidden="true">
-            {isPlatformRole ? 'admin_panel_settings' : 'restaurant'}
-          </span>
-          <div className="cms-sidebar__brand-text">
-            <span>Restaurent</span>
-            <small>{isPlatformRole ? 'Platform console' : role ? `${role.replaceAll('_', ' ')} workspace` : 'Staff Portal'}</small>
-          </div>
-        </Link>
-
-        <nav aria-label="Admin navigation" className="cms-sidebar__nav">
-          {links.map((link) => {
-            const active =
-              link.href === '/super-admin'
-                ? pathname === link.href
-                : pathname === link.href || pathname.startsWith(`${link.href}/`);
-
-            return (
-              <Link
-                aria-current={active ? 'page' : undefined}
-                className={active ? 'active' : ''}
-                href={link.href}
-                key={link.href}
-              >
-                <span
-                  aria-hidden="true"
-                  className={`material-symbols-outlined${active ? ' filled' : ''}`}
-                >
-                  {link.icon}
-                </span>
-                <span>{link.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="cms-sidebar__footer">
-          {isPlatformRole ? (
-            <Link className="cms-sidebar__cta" href="/super-admin/tenants">
-              <span aria-hidden="true" className="material-symbols-outlined">add</span>
-              Add New Tenant
-            </Link>
-          ) : null}
-          {!isPlatformRole && session.branches.length > 1 ? (
-            <label className="cms-branch-switcher">
-              <span aria-hidden="true" className="material-symbols-outlined">storefront</span>
-              <select
-                aria-label="Switch outlet"
-                disabled={switching}
-                onChange={(event) => void changeBranch(event.target.value)}
-                value={session.branchId}
-              >
-                {session.branches.map((branch) => (
-                  <option key={branch.branchId} value={branch.branchId}>
-                    {branch.name} - {branch.roleKey.replaceAll('_', ' ')}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <span className="pill">
-              <span aria-hidden="true" className="material-symbols-outlined">
-                {isPlatformRole ? 'shield_person' : 'storefront'}
-              </span>
-              {isPlatformRole ? 'Platform' : (currentBranch?.name ?? 'Workspace')}
-            </span>
-          )}
-          <div className="cms-sidebar__footer-links">
-            <Link href="/login">Switch account</Link>
-            <span style={{ color: 'var(--outline-variant)' }}>|</span>
-            <button className="button-link" onClick={logout} type="button">Logout</button>
-          </div>
-        </div>
-      </aside>
-
-      <div className="cms-content">
-        {showSubscriptionWarning ? (
-          <div className="subscription-warning">
-            <strong>Subscription needs attention</strong>
-            <span>Your subscription is cancelled, suspended, or payment failed. Update billing to restore workspace access.</span>
-            <Link href="/subscription">Open billing</Link>
-          </div>
-        ) : null}
-        {allowed ? (
-          children
-        ) : (
-          <main className="page-shell">
-            <section className="panel">
-              <p className="eyebrow">{subscriptionBlocked ? 'Billing required' : 'Access denied'}</p>
-              <h1>{subscriptionBlocked ? 'Update billing to restore this workspace.' : 'This workspace is not available for your role.'}</h1>
-              <p className="muted">
-                {subscriptionBlocked
-                  ? 'The account can still sign in, but product features are paused until the Stripe subscription is active again.'
-                  : `Use the sidebar to open an area assigned to ${role.replaceAll('_', ' ') || 'your account'}.`}
-              </p>
-              {subscriptionBlocked ? <Link className="button-secondary" href="/subscription">Go to subscription</Link> : null}
-            </section>
-          </main>
-        )}
-      </div>
-    </div>
+    <AppShell
+      banner={banner}
+      branchId={session.branchId}
+      branches={session.branches}
+      homeHref={isPlatformRole ? '/super-admin' : '/dashboard'}
+      isPlatformRole={isPlatformRole}
+      links={links}
+      onBranchChange={(branchId) => void changeBranch(branchId)}
+      onLogout={logout}
+      role={role}
+      switching={switching}
+    >
+      {allowed ? (
+        children
+      ) : (
+        <PageShell>
+          <EmptyState
+            action={
+              subscriptionBlocked ? (
+                <Button asChild>
+                  <Link href="/subscription">Go to subscription</Link>
+                </Button>
+              ) : undefined
+            }
+            description={
+              subscriptionBlocked
+                ? 'The account can still sign in, but product features are paused until the subscription is active again.'
+                : `Use the navigation to open an area assigned to ${humanize(role) || 'your account'}.`
+            }
+            icon={subscriptionBlocked ? CreditCard : ShieldAlert}
+            title={subscriptionBlocked ? 'Update billing to restore this workspace' : 'This area is not available for your role'}
+          />
+        </PageShell>
+      )}
+    </AppShell>
   );
 }
