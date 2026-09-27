@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
+import { useConfirm } from '@/components/confirm-dialog';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { ErrorState } from '@/components/error-state';
@@ -54,6 +55,7 @@ function DetailList({ rows }: { rows: [string, ReactNode][] }): ReactNode {
 
 export function TenantDetail({ tenantId }: { tenantId: string }): ReactNode {
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
   const [detail, setDetail] = useState<CmsSuperAdminTenantDetail | null>(null);
   const [editingTenant, setEditingTenant] = useState(false);
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
@@ -105,6 +107,22 @@ export function TenantDetail({ tenantId }: { tenantId: string }): ReactNode {
 
   async function saveTenantDetails(): Promise<void> {
     if (!detail || !token) return;
+    const nextStatus = tenantForm.status;
+    if (nextStatus !== detail.tenant.status && ['suspended', 'archived'].includes(nextStatus)) {
+      const ok = await confirm({
+        confirmLabel: nextStatus === 'archived' ? 'Archive tenant' : 'Suspend tenant',
+        description: `${detail.tenant.legalName} will lose access to its workspace.`,
+        details: [
+          'Every staff member at every outlet is blocked from product features.',
+          'Guests can no longer order from this restaurant’s QR codes.',
+          'You can reactivate the tenant later from this page.',
+        ],
+        requireText: detail.tenant.slug,
+        title: `${nextStatus === 'archived' ? 'Archive' : 'Suspend'} ${detail.tenant.legalName}?`,
+        tone: 'destructive',
+      });
+      if (!ok) return;
+    }
     setBusy(true);
     try {
       applyDetail(await updateSuperAdminTenant(documentId(detail.tenant), tenantForm, token));
@@ -298,8 +316,11 @@ export function TenantDetail({ tenantId }: { tenantId: string }): ReactNode {
                 },
               ]}
               empty={<EmptyState compact icon={Users} title="No employees yet" />}
+              pageSize={10}
               rowKey={(employee) => employee.id}
               rows={detail.employees ?? []}
+              searchPlaceholder="Search employees"
+              searchText={(employee) => `${employee.name} ${employee.email} ${employee.branchName}`}
             />
           </SectionCard>
 

@@ -86,8 +86,11 @@ export default function AnalyticsPage() {
           ]}
           empty={<EmptyState compact icon={ChartLine} title="No menu data yet" />}
           loading={state.status === 'loading'}
+          pageSize={10}
           rowKey={(item) => item.name}
           rows={items}
+          searchPlaceholder="Search dishes"
+          searchText={(item) => item.name}
         />
       </SectionCard>
     </PageShell>

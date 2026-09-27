@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { StatusTone } from '@/lib/status-tone';
 import { cn } from '@/lib/utils';
 
@@ -19,6 +20,7 @@ export function StatCard({
   hint,
   icon: Icon,
   label,
+  loading = false,
   tone = 'default',
   value,
 }: {
@@ -26,6 +28,8 @@ export function StatCard({
   hint?: ReactNode;
   icon?: LucideIcon | undefined;
   label: string;
+  /** Show a placeholder instead of the value, so a first paint never reads as zero. */
+  loading?: boolean;
   tone?: StatusTone;
   value: ReactNode;
 }): ReactNode {
@@ -42,7 +46,11 @@ export function StatCard({
           </span>
         ) : null}
       </div>
-      <p className="font-display text-3xl font-semibold tabular-nums tracking-tight text-foreground">{value}</p>
+      {loading ? (
+        <Skeleton className="my-1.5 h-7 w-20" />
+      ) : (
+        <p className="font-display text-3xl font-semibold tabular-nums tracking-tight text-foreground">{value}</p>
+      )}
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </Card>
   );

@@ -4,6 +4,7 @@ import { Banknote, CircleCheckBig, CreditCard, QrCode, ReceiptText, Wallet } fro
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
+import { useConfirm } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { ErrorState } from '@/components/error-state';
 import { LoadingCards, LoadingRows } from '@/components/loading-state';
@@ -35,6 +36,7 @@ export default function BillsPage() {
   const [completedPage, setCompletedPage] = useState(1);
   const [state, setState] = useState<AsyncState>(loading);
   const [bills, setBills] = useState<CmsBill[]>([]);
+  const confirm = useConfirm();
   const settings = useMemo(() => (typeof window === 'undefined' ? null : readCmsSettings()), []);
   const canCapturePayment = ['platform_admin', 'owner', 'manager', 'waiter', 'cashier'].includes(settings?.role ?? '');
   const activeBills = useMemo(() => bills.filter((bill) => bill.status !== 'captured'), [bills]);
@@ -128,6 +130,16 @@ export default function BillsPage() {
 
   async function markBillPaid(bill: CmsBill, method: string): Promise<void> {
     if (!settings?.token) return;
+    const entry = paymentMethods.find((item) => item.method === method);
+    const label = entry?.label ?? method;
+    const ok = await confirm({
+      confirmLabel: `Mark paid by ${label}`,
+      description: `Table ···${shortId(bill.tableId)} · ${money(bill.amount)} across ${bill.orders.length} ${bill.orders.length === 1 ? 'order' : 'orders'}.`,
+      details: ['Only confirm once the money has been received.', 'The bill moves to completed and the table can be closed.'],
+      ...(entry ? { icon: entry.icon } : {}),
+      title: `Record ${money(bill.amount)} paid by ${label}?`,
+    });
+    if (!ok) return;
     const id = billKey(bill);
     setBusy(id);
     try {

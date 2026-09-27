@@ -25,10 +25,10 @@ export function DashboardView(): ReactNode {
       title="Platform dashboard"
     >
       <StatGrid>
-        <StatCard icon={Building2} label="Total tenants" tone="primary" value={stats.totalTenants} />
-        <StatCard icon={CircleCheckBig} label="Active tenants" tone="success" value={stats.activeTenants} />
-        <StatCard icon={IndianRupee} label="Current MRR" tone="info" value={platformMoney(stats.monthlyValue)} />
-        <StatCard icon={TriangleAlert} label="Needs attention" tone={stats.attention > 0 ? 'warning' : 'default'} value={stats.attention} />
+        <StatCard loading={loading} icon={Building2} label="Total tenants" tone="primary" value={stats.totalTenants} />
+        <StatCard loading={loading} icon={CircleCheckBig} label="Active tenants" tone="success" value={stats.activeTenants} />
+        <StatCard loading={loading} icon={IndianRupee} label="Current MRR" tone="info" value={platformMoney(stats.monthlyValue)} />
+        <StatCard loading={loading} icon={TriangleAlert} label="Needs attention" tone={stats.attention > 0 ? 'warning' : 'default'} value={stats.attention} />
       </StatGrid>
 
       <section className="grid gap-4 lg:grid-cols-2">

@@ -164,7 +164,7 @@ export default function SubscriptionPage() {
       </section>
 
       {state.status === 'loading' ? (
-        <LoadingCards count={3} />
+        <LoadingCards count={3} variant="plan" />
       ) : plans.length === 0 ? (
         <EmptyState description="Contact platform support to enable plans for this restaurant." icon={CreditCard} title="No plans available" />
       ) : (

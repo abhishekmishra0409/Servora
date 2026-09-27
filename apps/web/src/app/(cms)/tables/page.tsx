@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useCmsSession } from '@/components/cms-session-provider';
+import { useConfirm } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { ErrorState, NoticeBanner } from '@/components/error-state';
 import { FormActions, FormField } from '@/components/form-field';
@@ -32,6 +33,7 @@ import { useTableQr } from '@/lib/use-table-qr';
 export default function TablesPage() {
   const session = useCmsSession();
   const qr = useTableQr({ width: 220 });
+  const confirm = useConfirm();
   const [editingId, setEditingId] = useState('');
   const [form, setForm] = useState({ capacity: '4', floorId: '', tableNo: '' });
   const [limitError, setLimitError] = useState<ApiError | null>(null);
@@ -136,6 +138,23 @@ export default function TablesPage() {
       toast.error(errorMessage(error, 'Could not delete the table.'));
       throw error;
     }
+  }
+
+  async function regenerate(table: CmsTable): Promise<void> {
+    const ok = await confirm({
+      confirmLabel: 'Regenerate QR',
+      description: `Table ${table.tableNo} gets a brand-new code.`,
+      details: [
+        'Printed or downloaded codes for this table stop working immediately.',
+        'Guests currently seated keep their session until it closes.',
+        'Download and reprint the new code afterwards.',
+      ],
+      title: `Regenerate the QR code for table ${table.tableNo}?`,
+      tone: 'warning',
+    });
+    if (!ok) return;
+    await qr.regenerate(table);
+    toast.success(`New QR code issued for table ${table.tableNo}`);
   }
 
   /** Everything the downloaded artwork prints, resolved from live data. */
@@ -273,7 +292,7 @@ export default function TablesPage() {
       ) : null}
 
       {isLoading ? (
-        <LoadingCards count={4} />
+        <LoadingCards className="2xl:grid-cols-4" count={8} variant="qr" />
       ) : qr.tables.length === 0 ? (
         <EmptyState
           description={canAdd ? 'Create the first table above to generate its QR code.' : 'No tables have been set up for this outlet yet.'}
@@ -294,7 +313,7 @@ export default function TablesPage() {
                 onDelete={() => remove(table)}
                 onDownload={() => void downloadOne(table)}
                 onEdit={() => edit(table)}
-                onRegenerate={() => void qr.regenerate(table)}
+                onRegenerate={() => void regenerate(table)}
                 qrImage={qr.qrImages[tableId]}
                 table={table}
                 url={qr.customerUrl(table.qrToken)}

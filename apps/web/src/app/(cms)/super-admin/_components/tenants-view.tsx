@@ -32,10 +32,10 @@ export function TenantsView(): ReactNode {
       title="Tenants"
     >
       <StatGrid>
-        <StatCard icon={Building2} label="Total tenants" tone="primary" value={stats.totalTenants} />
-        <StatCard icon={CircleCheckBig} label="Active tenants" tone="success" value={stats.activeTenants} />
-        <StatCard icon={TriangleAlert} label="Suspended or at risk" tone={stats.attention > 0 ? 'warning' : 'default'} value={stats.attention} />
-        <StatCard icon={LayoutGrid} label="Feature modules" value={TENANT_FEATURES.length} />
+        <StatCard loading={state.status === 'loading'} icon={Building2} label="Total tenants" tone="primary" value={stats.totalTenants} />
+        <StatCard loading={state.status === 'loading'} icon={CircleCheckBig} label="Active tenants" tone="success" value={stats.activeTenants} />
+        <StatCard loading={state.status === 'loading'} icon={TriangleAlert} label="Suspended or at risk" tone={stats.attention > 0 ? 'warning' : 'default'} value={stats.attention} />
+        <StatCard loading={state.status === 'loading'} icon={LayoutGrid} label="Feature modules" value={TENANT_FEATURES.length} />
       </StatGrid>
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">

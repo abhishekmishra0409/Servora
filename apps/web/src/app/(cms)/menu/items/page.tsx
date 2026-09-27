@@ -363,7 +363,7 @@ export default function MenuItemsPage() {
       </div>
 
       {state.status === 'loading' ? (
-        <LoadingCards count={6} />
+        <LoadingCards count={6} variant="menu" />
       ) : filteredItems.length === 0 ? (
         <EmptyState
           description={query ? 'Clear the search to see every dish.' : 'Create the first dish using the form above.'}

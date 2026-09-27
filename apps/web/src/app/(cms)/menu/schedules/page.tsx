@@ -179,8 +179,11 @@ export default function MenuSchedulesPage() {
             empty={<EmptyState compact description="Create dishes on the menu items page first." icon={CalendarClock} title="No dishes to schedule" />}
             loading={state.status === 'loading'}
             rowClassName={(item) => (documentId(item) === editingId ? 'bg-accent/40' : undefined)}
+            pageSize={10}
             rowKey={documentId}
             rows={items}
+            searchPlaceholder="Search dishes"
+            searchText={(item) => item.name}
           />
         </SectionCard>
       </section>

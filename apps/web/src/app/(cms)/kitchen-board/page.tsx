@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 
 import { ErrorState } from '@/components/error-state';
 import { KanbanBoard } from '@/components/kanban-board';
-import { LoadingCards } from '@/components/loading-state';
+import { LoadingKanban } from '@/components/loading-state';
 import { OrderTicket } from '@/components/order-ticket';
 import { PageHeader } from '@/components/page-header';
 import { PageShell } from '@/components/page-shell';
@@ -93,7 +93,7 @@ export default function KitchenBoardPage() {
       {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
 
       {state.status === 'loading' ? (
-        <LoadingCards count={3} />
+        <LoadingKanban columns={3} />
       ) : (
         <KanbanBoard
           columns={columns}

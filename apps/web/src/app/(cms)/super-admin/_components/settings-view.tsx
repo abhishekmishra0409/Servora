@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
 import { ChangePasswordForm } from '@/components/change-password-form';
+import { useConfirm } from '@/components/confirm-dialog';
 import { NoticeBanner } from '@/components/error-state';
 import { FormActions, FormField } from '@/components/form-field';
 import { SectionCard } from '@/components/section-card';
@@ -15,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { PlatformPage } from './platform-page';
 
 export function SettingsView(): ReactNode {
+  const confirm = useConfirm();
   const [displayName, setDisplayName] = useState('Servora');
   const [supportEmail, setSupportEmail] = useState('');
   const [memo, setMemo] = useState('');
@@ -58,7 +60,21 @@ export function SettingsView(): ReactNode {
               <span className="block font-medium">Global maintenance mode</span>
               <span className="text-xs text-muted-foreground">Show a maintenance notice to every workspace.</span>
             </span>
-            <Switch checked={maintenance} onCheckedChange={setMaintenance} />
+            <Switch
+              checked={maintenance}
+              onCheckedChange={(checked) => {
+                if (!checked) {
+                  setMaintenance(false);
+                  return;
+                }
+                void confirm({
+                  confirmLabel: 'Turn on maintenance',
+                  description: 'Every restaurant workspace will show a maintenance notice.',
+                  title: 'Enable global maintenance mode?',
+                  tone: 'warning',
+                }).then((ok) => setMaintenance(ok));
+              }}
+            />
           </label>
         </SectionCard>
 

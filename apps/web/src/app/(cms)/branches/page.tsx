@@ -223,7 +223,13 @@ export default function BranchesPage() {
                     {canDelete ? (
                       <ConfirmDialog
                         confirmLabel="Archive outlet"
-                        description="Staff lose access to this outlet. Past orders and bills are kept for reporting."
+                        description="This outlet is taken out of service for everyone."
+                        details={[
+                          'Staff can no longer sign in to or switch to this outlet.',
+                          'Its tables and QR codes stop taking orders.',
+                          'Past orders and bills are kept for reporting.',
+                        ]}
+                        requireText={branch.name}
                         destructive
                         onConfirm={() => archive(id)}
                         title={`Archive ${branch.name}?`}
@@ -244,6 +250,8 @@ export default function BranchesPage() {
           loading={state.status === 'loading'}
           rowKey={documentId}
           rows={branches}
+          searchPlaceholder="Search outlets"
+          searchText={(branch) => `${branch.name} ${branch.slug}`}
         />
       </SectionCard>
     </PageShell>

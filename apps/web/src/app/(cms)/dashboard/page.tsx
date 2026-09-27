@@ -111,10 +111,10 @@ export default function DashboardPage() {
       {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
 
       <StatGrid>
-        <StatCard icon={BellRing} label="Pending confirmation" tone="warning" value={kpis.pending} />
-        <StatCard icon={ChefHat} label="Kitchen queue" tone="info" value={kpis.kitchen} />
-        <StatCard icon={CircleCheckBig} label="Ready to serve" tone="success" value={kpis.ready} />
-        <StatCard icon={IndianRupee} label="Live order value" tone="primary" value={money(kpis.value)} />
+        <StatCard loading={state.status === 'loading'} icon={BellRing} label="Pending confirmation" tone="warning" value={kpis.pending} />
+        <StatCard loading={state.status === 'loading'} icon={ChefHat} label="Kitchen queue" tone="info" value={kpis.kitchen} />
+        <StatCard loading={state.status === 'loading'} icon={CircleCheckBig} label="Ready to serve" tone="success" value={kpis.ready} />
+        <StatCard loading={state.status === 'loading'} icon={IndianRupee} label="Live order value" tone="primary" value={money(kpis.value)} />
       </StatGrid>
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">

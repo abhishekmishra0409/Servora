@@ -43,10 +43,10 @@ export function SystemHealthView(): ReactNode {
       title="System health"
     >
       <StatGrid>
-        <StatCard icon={Activity} label="API" tone={apiHealthy ? 'success' : state.status === 'error' ? 'destructive' : 'default'} value={apiHealthy ? 'Healthy' : state.status === 'error' ? 'Down' : 'Checking'} />
-        <StatCard icon={Building2} label="Tenants" tone="primary" value={stats.totalTenants} />
-        <StatCard icon={CreditCard} label="Active subscriptions" tone="info" value={stats.activeSubscriptions} />
-        <StatCard icon={TriangleAlert} label="Attention queue" tone={stats.attention > 0 ? 'warning' : 'default'} value={stats.attention} />
+        <StatCard loading={state.status === 'loading'} icon={Activity} label="API" tone={apiHealthy ? 'success' : state.status === 'error' ? 'destructive' : 'default'} value={apiHealthy ? 'Healthy' : state.status === 'error' ? 'Down' : 'Checking'} />
+        <StatCard loading={state.status === 'loading'} icon={Building2} label="Tenants" tone="primary" value={stats.totalTenants} />
+        <StatCard loading={state.status === 'loading'} icon={CreditCard} label="Active subscriptions" tone="info" value={stats.activeSubscriptions} />
+        <StatCard loading={state.status === 'loading'} icon={TriangleAlert} label="Attention queue" tone={stats.attention > 0 ? 'warning' : 'default'} value={stats.attention} />
       </StatGrid>
 
       <section className="grid gap-4 lg:grid-cols-2">

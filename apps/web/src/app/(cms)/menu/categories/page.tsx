@@ -184,6 +184,8 @@ export default function MenuCategoriesPage() {
             loading={state.status === 'loading'}
             rowKey={documentId}
             rows={categories}
+            searchPlaceholder="Search categories"
+            searchText={(category) => category.name}
           />
         </SectionCard>
       </section>

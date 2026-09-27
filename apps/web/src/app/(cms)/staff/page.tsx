@@ -276,7 +276,7 @@ export default function StaffPage() {
         </SectionCard>
       </section>
 
-      <SectionCard contentClassName="space-y-0" title={`${staff.length} people`}>
+      <SectionCard contentClassName="space-y-0" title={state.status === 'loading' ? 'Team' : `${staff.length} ${staff.length === 1 ? 'person' : 'people'}`}>
         <DataTable
           columns={[
             {
@@ -326,8 +326,11 @@ export default function StaffPage() {
           ]}
           empty={<EmptyState compact description="Add the first team member using the form." icon={Users} title="No staff yet" />}
           loading={state.status === 'loading'}
+          pageSize={10}
           rowKey={(member) => member.id}
           rows={staff}
+          searchPlaceholder="Search staff"
+          searchText={(member) => `${member.name} ${member.email} ${roleName(member.role)}`}
         />
       </SectionCard>
     </PageShell>

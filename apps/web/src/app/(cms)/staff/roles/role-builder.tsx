@@ -23,7 +23,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
 import { useCmsSession } from '@/components/cms-session-provider';
-import { ConfirmDialog } from '@/components/confirm-dialog';
+import { ConfirmDialog, useConfirm } from '@/components/confirm-dialog';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
 import { ErrorState, NoticeBanner } from '@/components/error-state';
@@ -65,6 +65,7 @@ function StepHeading({ number, title }: { number: number; title: string }): Reac
 
 export function RoleBuilder(): ReactNode {
   const session = useCmsSession();
+  const confirm = useConfirm();
   const [roles, setRoles] = useState<CmsRole[]>([]);
   const [state, setState] = useState<AsyncState>(loading);
   const [limitError, setLimitError] = useState<ApiError | null>(null);
@@ -305,7 +306,22 @@ export function RoleBuilder(): ReactNode {
                   <Badge variant="secondary">
                     {granted.size} permissions across {review.canSee.length} screens
                   </Badge>
-                  <Button onClick={() => setGranted(normalize([]))} size="sm" type="button" variant="ghost">
+                  <Button
+                    disabled={granted.size === 0}
+                    onClick={() =>
+                      void confirm({
+                        confirmLabel: 'Clear all',
+                        description: `All ${granted.size} permissions picked for this role will be switched off. Nothing is saved until you choose ${editingId ? 'Save role' : 'Create role'}.`,
+                        title: 'Clear every permission?',
+                        tone: 'warning',
+                      }).then((ok) => {
+                        if (ok) setGranted(normalize([]));
+                      })
+                    }
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
                     Clear all
                   </Button>
                 </div>
@@ -404,6 +420,7 @@ export function RoleBuilder(): ReactNode {
                         <ConfirmDialog
                           confirmLabel="Delete role"
                           description="Nobody is assigned to this role, so it can be removed safely."
+                          details={['Its permission set is deleted permanently.', 'Built-in roles are not affected.']}
                           destructive
                           onConfirm={() => remove(role)}
                           title={`Delete ${role.name}?`}
@@ -432,6 +449,8 @@ export function RoleBuilder(): ReactNode {
           loading={state.status === 'loading'}
           rowKey={(role) => role.id}
           rows={roles}
+          searchPlaceholder="Search roles"
+          searchText={(role) => `${role.name} ${role.description ?? ''}`}
         />
       </SectionCard>
     </PageShell>

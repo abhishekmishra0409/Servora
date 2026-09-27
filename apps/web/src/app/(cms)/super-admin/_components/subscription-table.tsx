@@ -53,8 +53,11 @@ export function SubscriptionTable({
         ]}
         empty={<EmptyState compact icon={Building2} title="No tenants yet" />}
         loading={loading}
+        pageSize={10}
         rowKey={(item) => documentId(item.tenant)}
         rows={tenants}
+        searchPlaceholder="Search tenants"
+        searchText={(item) => `${item.tenant.legalName} ${item.plan?.name ?? ''}`}
       />
     </SectionCard>
   );

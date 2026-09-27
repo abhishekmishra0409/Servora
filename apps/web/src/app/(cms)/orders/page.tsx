@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useCmsSession } from '@/components/cms-session-provider';
+import { useConfirm } from '@/components/confirm-dialog';
 import { ErrorState } from '@/components/error-state';
 import { KanbanBoard } from '@/components/kanban-board';
-import { LoadingCards } from '@/components/loading-state';
+import { LoadingKanban } from '@/components/loading-state';
 import { OrderTicket } from '@/components/order-ticket';
 import { PageHeader } from '@/components/page-header';
 import { PageShell } from '@/components/page-shell';
@@ -21,7 +22,8 @@ import {
 } from '@/lib/api-client';
 import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
 import { readCmsSettings } from '@/lib/cms-storage';
-import { elapsedSince } from '@/lib/format';
+import { elapsedSince, money, shortId } from '@/lib/format';
+import { formatOrderNumber } from '@/lib/order-number';
 import { createSocketClient } from '@/lib/socket';
 import { toneFor } from '@/lib/status-tone';
 
@@ -34,6 +36,7 @@ const statuses = [
 
 export default function OrdersPage() {
   const { can } = useCmsSession();
+  const confirm = useConfirm();
   const [branchId, setBranchId] = useState('');
   const [token, setToken] = useState('');
   const [orders, setOrders] = useState<LiveOrder[]>([]);
@@ -82,6 +85,18 @@ export default function OrdersPage() {
 
   async function act(order: LiveOrder, action: 'confirm' | 'reject' | 'preparing' | 'ready' | 'served'): Promise<void> {
     const id = documentId(order);
+    if (
+      action === 'reject' &&
+      !(await confirm({
+        confirmLabel: 'Reject order',
+        description: `${formatOrderNumber(order.orderNo)} for table ···${shortId(order.tableId)} (${money(order.grandTotal)}) will not reach the kitchen.`,
+        details: ['The guest sees the order as declined on their status screen.', 'This cannot be undone. The guest would need to order again.'],
+        title: 'Reject this order?',
+        tone: 'destructive',
+      }))
+    ) {
+      return;
+    }
     setBusy(id);
     try {
       if (action === 'confirm') {
@@ -116,7 +131,7 @@ export default function OrdersPage() {
       {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
 
       {state.status === 'loading' ? (
-        <LoadingCards count={4} />
+        <LoadingKanban columns={4} />
       ) : (
         <KanbanBoard
           columns={columns}

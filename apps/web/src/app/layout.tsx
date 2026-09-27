@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { Fraunces, Inter } from 'next/font/google';
 
+import { ConfirmProvider } from '@/components/confirm-dialog';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { PwaBootstrap } from '@/components/pwa-bootstrap';
@@ -48,9 +49,11 @@ export default function RootLayout({ children }: { children: ReactNode }): React
     <html className={`${inter.variable} ${fraunces.variable}`} lang="en">
       <body>
         <TooltipProvider delayDuration={200}>
-          <PwaBootstrap />
-          {children}
-          <Toaster />
+          <ConfirmProvider>
+            <PwaBootstrap />
+            {children}
+            <Toaster />
+          </ConfirmProvider>
         </TooltipProvider>
       </body>
     </html>

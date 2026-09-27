@@ -1,12 +1,13 @@
 'use client';
 
-import { CreditCard, ShieldAlert } from 'lucide-react';
+import { CreditCard, LogOut, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
 import { AppShell } from '@/components/app-shell';
+import { useConfirm } from '@/components/confirm-dialog';
 import { CmsSessionProvider, useCmsSession } from '@/components/cms-session-provider';
 import { EmptyState } from '@/components/empty-state';
 import { PageLoading } from '@/components/loading-state';
@@ -32,6 +33,7 @@ function CmsChrome({ children }: { children: ReactNode }): ReactNode {
   const [checkedAuth, setCheckedAuth] = useState(false);
   const [tenantStatus, setTenantStatus] = useState('');
   const [switching, setSwitching] = useState(false);
+  const confirm = useConfirm();
   const role = session.role;
 
   useEffect(() => {
@@ -57,13 +59,22 @@ function CmsChrome({ children }: { children: ReactNode }): ReactNode {
     }
   }, [router]);
 
-  function logout(): void {
+  async function logout(): Promise<void> {
+    const ok = await confirm({
+      confirmLabel: 'Log out',
+      description: 'You will need your email and password to get back into this workspace.',
+      icon: LogOut,
+      title: 'Log out of Servora?',
+      tone: 'warning',
+    });
+    if (!ok) return;
     clearCmsSettings();
     router.replace('/login');
   }
 
   async function changeBranch(branchId: string): Promise<void> {
     setSwitching(true);
+    const target = session.branches.find((branch) => branch.branchId === branchId);
     try {
       const next = await switchCmsBranch(branchId, session.token);
       // The role can differ per outlet, so the whole session is re-issued.
@@ -77,6 +88,7 @@ function CmsChrome({ children }: { children: ReactNode }): ReactNode {
       );
       await session.reload();
       router.refresh();
+      toast.success(`Switched to ${target?.name ?? 'the selected outlet'}`);
     } catch {
       toast.error('Could not switch outlet. You are still on the current one.');
     } finally {
@@ -120,11 +132,12 @@ function CmsChrome({ children }: { children: ReactNode }): ReactNode {
       banner={banner}
       branchId={session.branchId}
       branches={session.branches}
+      canManageOutlets={session.can('branches:view')}
       homeHref={isPlatformRole ? '/super-admin' : '/dashboard'}
       isPlatformRole={isPlatformRole}
       links={links}
       onBranchChange={(branchId) => void changeBranch(branchId)}
-      onLogout={logout}
+      onLogout={() => void logout()}
       role={role}
       switching={switching}
     >

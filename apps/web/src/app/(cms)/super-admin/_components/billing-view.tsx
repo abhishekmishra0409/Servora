@@ -22,10 +22,10 @@ export function BillingView(): ReactNode {
       title="Billing"
     >
       <StatGrid>
-        <StatCard icon={IndianRupee} label="Current MRR" tone="primary" value={platformMoney(stats.monthlyValue)} />
-        <StatCard icon={CircleCheckBig} label="Active subscriptions" tone="success" value={stats.activeSubscriptions} />
-        <StatCard icon={TriangleAlert} label="Past due or suspended" tone={stats.attention > 0 ? 'warning' : 'default'} value={stats.attention} />
-        <StatCard icon={Wallet} label="Billing currency" value="INR" />
+        <StatCard loading={state.status === 'loading'} icon={IndianRupee} label="Current MRR" tone="primary" value={platformMoney(stats.monthlyValue)} />
+        <StatCard loading={state.status === 'loading'} icon={CircleCheckBig} label="Active subscriptions" tone="success" value={stats.activeSubscriptions} />
+        <StatCard loading={state.status === 'loading'} icon={TriangleAlert} label="Past due or suspended" tone={stats.attention > 0 ? 'warning' : 'default'} value={stats.attention} />
+        <StatCard loading={state.status === 'loading'} icon={Wallet} label="Billing currency" value="INR" />
       </StatGrid>
       <SubscriptionTable loading={state.status === 'loading'} tenants={tenants} />
     </PlatformPage>
