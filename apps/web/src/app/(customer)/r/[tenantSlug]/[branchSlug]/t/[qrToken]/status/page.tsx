@@ -1,52 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Check, ChefHat, CircleCheckBig, ClipboardCheck, ConciergeBell, ReceiptText, UtensilsCrossed, type LucideIcon } from 'lucide-react';
+import Link from 'next/link';
+import { useEffect, useState, type ReactNode } from 'react';
 
-import {
-  getOrderStatus,
-  getPublicOrders,
-  type OrderStatusSnapshot,
-} from '@/lib/api-client';
+import { CustomerHeading, CustomerPage } from '@/components/customer-page';
+import { EmptyState } from '@/components/empty-state';
+import { ErrorState } from '@/components/error-state';
+import { LoadingRows } from '@/components/loading-state';
+import { StatusBadge } from '@/components/status-badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { getOrderStatus, getPublicOrders, type OrderStatusSnapshot } from '@/lib/api-client';
 import { useCustomerRoute } from '@/lib/customer-route';
 import { readGuestSession, readSubmittedOrders } from '@/lib/customer-storage';
+import { money } from '@/lib/format';
 import { formatOrderNumber } from '@/lib/order-number';
 import { createSocketClient } from '@/lib/socket';
+import { cn } from '@/lib/utils';
 
-const steps = ['pending_confirmation', 'accepted', 'preparing', 'ready', 'served', 'closed'];
-
-const labels: Record<string, string> = {
-  accepted: 'Order Accepted',
-  closed: 'Closed',
-  pending_confirmation: 'Waiting for Confirmation',
-  preparing: 'Preparing Your Food',
-  ready: 'Ready for Service',
-  rejected: 'Rejected',
-  served: 'Served',
-};
-
-const statusIcons: Record<string, string> = {
-  accepted: 'check_circle',
-  closed: 'task_alt',
-  pending_confirmation: 'check_circle',
-  preparing: 'skillet',
-  ready: 'room_service',
-  served: 'restaurant',
-};
-
-const etaByStatus: Record<string, { end: number; progress: number; start: number }> = {
-  accepted: { end: 15, progress: 28, start: 12 },
-  closed: { end: 0, progress: 100, start: 0 },
-  pending_confirmation: { end: 15, progress: 12, start: 12 },
-  preparing: { end: 8, progress: 58, start: 6 },
-  ready: { end: 3, progress: 86, start: 1 },
-  served: { end: 0, progress: 100, start: 0 },
-};
-
-const money = (value: number): string =>
-  new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
-
-const etaFor = (status: string): { end: number; progress: number; start: number } =>
-  etaByStatus[status] ?? { end: 15, progress: 10, start: 12 };
+const steps: { description: string; icon: LucideIcon; key: string; label: string }[] = [
+  { description: 'Your order has reached the restaurant.', icon: ClipboardCheck, key: 'pending_confirmation', label: 'Received' },
+  { description: 'A team member has accepted it.', icon: Check, key: 'accepted', label: 'Accepted' },
+  { description: 'The kitchen is cooking your dishes.', icon: ChefHat, key: 'preparing', label: 'Preparing' },
+  { description: 'Plated and on its way to you.', icon: ConciergeBell, key: 'ready', label: 'Ready' },
+  { description: 'Enjoy your meal.', icon: UtensilsCrossed, key: 'served', label: 'Served' },
+  { description: 'This order is complete.', icon: CircleCheckBig, key: 'closed', label: 'Closed' },
+];
 
 const lineTotal = (item: OrderStatusSnapshot['items'][number]): number => {
   const addons = item.addonSnapshots.reduce((total, addon) => total + addon.priceDelta, 0);
@@ -55,26 +35,24 @@ const lineTotal = (item: OrderStatusSnapshot['items'][number]): number => {
 
 const mergeOrders = (orders: OrderStatusSnapshot[]): OrderStatusSnapshot[] => {
   const byId = new Map<string, OrderStatusSnapshot>();
-
   for (const order of orders) {
     byId.set(order.id, order);
   }
-
-  return [...byId.values()].sort(
-    (first, second) => new Date(second.submittedAt).getTime() - new Date(first.submittedAt).getTime(),
-  );
+  return [...byId.values()].sort((first, second) => new Date(second.submittedAt).getTime() - new Date(first.submittedAt).getTime());
 };
 
-export default function CustomerStatusPage() {
+const timeOf = (iso: string): string => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+export default function CustomerStatusPage(): ReactNode {
   const { basePath, qrToken } = useCustomerRoute();
   const [orders, setOrders] = useState<OrderStatusSnapshot[]>([]);
-  const [notice, setNotice] = useState('Loading submitted orders...');
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (!qrToken) {
-      setNotice('This customer URL is missing a QR token.');
-      setError('Open a full table URL like /r/{tenant}/{branch}/t/{qrToken}.');
+      setError('Open a full table link like /r/{tenant}/{branch}/t/{qrToken}.');
+      setLoading(false);
       return undefined;
     }
 
@@ -85,28 +63,16 @@ export default function CustomerStatusPage() {
         const storedOrders = readSubmittedOrders(qrToken);
         const [tableOrders, deviceOrders] = await Promise.all([
           getPublicOrders(qrToken).catch(() => [] as OrderStatusSnapshot[]),
-          Promise.all(
-            storedOrders.map((storedOrder) => getOrderStatus(storedOrder.orderId, qrToken).catch(() => null)),
-          ),
+          Promise.all(storedOrders.map((storedOrder) => getOrderStatus(storedOrder.orderId, qrToken).catch(() => null))),
         ]);
-
-        if (!active) {
-          return;
-        }
-
-        const nextOrders = mergeOrders([
-          ...tableOrders,
-          ...deviceOrders.filter((order): order is OrderStatusSnapshot => Boolean(order)),
-        ]);
-        setOrders(nextOrders);
-        setNotice(nextOrders.length ? '' : 'No submitted orders for this table yet.');
+        if (!active) return;
+        setOrders(mergeOrders([...tableOrders, ...deviceOrders.filter((order): order is OrderStatusSnapshot => Boolean(order))]));
         setError('');
       } catch (nextError) {
-        if (!active) {
-          return;
-        }
+        if (!active) return;
         setError(nextError instanceof Error ? nextError.message : 'Could not load order status.');
-        setNotice('Status could not be refreshed.');
+      } finally {
+        if (active) setLoading(false);
       }
     };
 
@@ -126,150 +92,133 @@ export default function CustomerStatusPage() {
   }, [qrToken]);
 
   const latestOrder = orders[0] ?? null;
-  const currentIndex = latestOrder ? Math.max(0, steps.indexOf(latestOrder.status)) : -1;
-  const eta = etaFor(latestOrder?.status ?? 'pending_confirmation');
+  const rejected = latestOrder?.status === 'rejected';
+  const currentIndex = latestOrder && !rejected ? Math.max(0, steps.findIndex((step) => step.key === latestOrder.status)) : -1;
 
   return (
-    <main className="customer-main customer-main--mobile">
-      <section className="customer-status-hero">
-        <img
-          alt="Kitchen preparation area"
-          className="customer-status-hero__image"
-          src="https://i.pinimg.com/736x/84/81/ab/8481ab5bd88c3c7ea5f087b3a7d99c90.jpg"
+    <CustomerPage>
+      <CustomerHeading
+        action={
+          <Button asChild size="sm" variant="outline">
+            <Link href={`${basePath}/bill`}>
+              <ReceiptText />
+              Bill
+            </Link>
+          </Button>
+        }
+        description={latestOrder ? `Latest order placed at ${timeOf(latestOrder.submittedAt)}` : 'Live updates from the kitchen'}
+        title="Order status"
+      />
+
+      {error ? <ErrorState message={error} /> : null}
+
+      {loading ? (
+        <LoadingRows count={4} />
+      ) : !latestOrder ? (
+        <EmptyState
+          action={
+            <Button asChild>
+              <Link href={`${basePath}/menu`}>Browse menu</Link>
+            </Button>
+          }
+          description="Submit your bucket and progress will show up here."
+          icon={ReceiptText}
+          title="Nothing to track yet"
         />
-        <div className="customer-status-hero__shade" />
-        <div className="customer-status-hero__content">
-          <span className="eyebrow">Track Order</span>
-          <h1>{latestOrder ? `Order ${formatOrderNumber(latestOrder.orderNo)}` : 'Track Order'}</h1>
-          <p>
-            {latestOrder
-              ? `Latest order placed at ${new Date(latestOrder.submittedAt).toLocaleTimeString([], {
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })}`
-              : 'Submit a bucket to start tracking progress.'}
-          </p>
-        </div>
-      </section>
+      ) : (
+        <>
+          <Card className="gap-4 px-4 py-4 shadow-card">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Latest order</p>
+                <h2 className="font-display text-xl font-semibold">{formatOrderNumber(latestOrder.orderNo)}</h2>
+              </div>
+              <StatusBadge kind="order" value={latestOrder.status} />
+            </div>
 
-      {latestOrder ? (
-        <section className="customer-status-eta">
-          <div>
-            <span className="eyebrow">Estimated Time</span>
-            <strong>
-              {eta.end ? `${eta.start} - ${eta.end}` : '0'} <span>mins</span>
-            </strong>
-          </div>
-          <div className="customer-status-eta__icon">
-            <span className="material-symbols-outlined">timer</span>
-          </div>
-          <div className="customer-status-eta__track" aria-hidden="true">
-            <span style={{ width: `${eta.progress}%` }} />
-          </div>
-        </section>
-      ) : null}
-
-      {notice ? <p className="notice-text">{notice}</p> : null}
-      {error ? <p className="error-text">{error}</p> : null}
-
-      <section className={`customer-status-panel ${!latestOrder ? 'customer-status-panel--empty' : ''}`}>
-        <h2>Latest Order Status</h2>
-        <div className="customer-status-steps">
-          {steps.map((step, index) => {
-            const active = index <= currentIndex;
-            return (
-              <article className={`customer-status-step ${active ? 'active' : ''}`} key={step}>
-                <span className="customer-status-step__icon">
-                  <span className="material-symbols-outlined filled">
-                    {statusIcons[step] ?? 'radio_button_unchecked'}
-                  </span>
-                </span>
-                <div>
-                  <strong>{labels[step]}</strong>
-                  <p className="muted">
-                    {step === 'pending_confirmation'
-                      ? 'Your order has been securely received.'
-                      : step === 'accepted'
-                        ? 'The kitchen has acknowledged your request.'
-                        : step === 'preparing'
-                          ? 'Our culinary team is carefully crafting your meal.'
-                          : step === 'ready'
-                            ? 'Your food is hot and awaiting final checks.'
-                            : step === 'served'
-                              ? 'Enjoy your hospitality experience!'
-                              : 'Your order is complete.'}
-                  </p>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="customer-status-summary customer-status-summary--history">
-        <span className="eyebrow">Submitted Orders</span>
-        {orders.length ? (
-          <div className="customer-status-order-list">
-            {orders.map((order, orderIndex) => (
-              <article className="customer-status-order-card" key={order.id}>
-                <div className="customer-status-order-card__header">
-                  <div>
-                    <strong>
-                      {orderIndex === 0 ? 'Latest' : 'Order'} {formatOrderNumber(order.orderNo)}
-                    </strong>
-                    <p className="muted">
-                      {new Date(order.submittedAt).toLocaleString([], {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </p>
-                  </div>
-                  <span>{labels[order.status] ?? order.status}</span>
-                </div>
-                <div className="customer-status-summary__items">
-                  {order.items.map((item, index) => (
-                    <div
-                      className="customer-status-summary__row"
-                      key={`${order.id}-${item.menuItemId}-${item.variantLabel ?? 'regular'}-${index}`}
-                    >
-                      <div>
-                        <strong>
-                          {item.quantity}x {item.name}
-                        </strong>
-                        <p className="muted">
-                          {[item.variantLabel, ...item.addonSnapshots.map((addon) => addon.label), item.notes]
-                            .filter(Boolean)
-                            .join(' - ') || 'No modifiers'}
-                        </p>
+            {rejected ? (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="status">
+                This order was declined by the restaurant. Ask a team member for help or place a new order from the menu.
+              </p>
+            ) : (
+              <ol className="space-y-0">
+                {steps.map((step, index) => {
+                  const Icon = step.icon;
+                  const done = index < currentIndex;
+                  const current = index === currentIndex;
+                  const upcoming = index > currentIndex;
+                  return (
+                    <li className="flex gap-3" key={step.key}>
+                      <div className="flex flex-col items-center">
+                        <span
+                          className={cn(
+                            'inline-flex size-9 shrink-0 items-center justify-center rounded-full border-2',
+                            done && 'border-success bg-success text-success-foreground',
+                            current && 'border-primary bg-primary text-primary-foreground shadow-md shadow-primary/30',
+                            upcoming && 'border-border bg-muted text-muted-foreground',
+                          )}
+                        >
+                          {done ? <Check aria-hidden="true" className="size-4" /> : <Icon aria-hidden="true" className="size-4" />}
+                        </span>
+                        {index < steps.length - 1 ? (
+                          <span aria-hidden="true" className={cn('w-0.5 flex-1 min-h-6', done ? 'bg-success' : 'bg-border')} />
+                        ) : null}
                       </div>
-                      <strong>{money(lineTotal(item))}</strong>
-                    </div>
-                  ))}
-                </div>
-                <div className="customer-status-order-card__total">
-                  <span>Total</span>
-                  <strong>{money(order.grandTotal)}</strong>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <p className="muted">No submitted order has been recorded for this table yet.</p>
-        )}
-      </section>
+                      <div className={cn('pb-5 pt-1.5', upcoming && 'opacity-60')}>
+                        <p className={cn('text-sm font-semibold', current && 'text-primary')}>
+                          {step.label}
+                          {current ? <span className="ml-2 text-xs font-medium text-muted-foreground">Now</span> : null}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{step.description}</p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </Card>
 
-      {!latestOrder ? (
-        <section className="customer-panel customer-empty-state">
-          <span className="material-symbols-outlined">restaurant_menu</span>
-          <h2>Ready to order?</h2>
-          <p className="muted">Go back to the menu and submit your bucket to start tracking.</p>
-          <a className="button-link" href={`${basePath}/menu`}>
-            Back to Menu
-          </a>
-        </section>
-      ) : null}
-    </main>
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.1em] text-muted-foreground">Submitted orders</h2>
+            {orders.map((order, orderIndex) => (
+              <Card className="gap-0 p-0 shadow-card" key={order.id}>
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">
+                        {orderIndex === 0 ? 'Latest' : 'Order'} {formatOrderNumber(order.orderNo)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(order.submittedAt).toLocaleString([], { day: 'numeric', hour: 'numeric', minute: '2-digit', month: 'short' })}
+                      </p>
+                    </div>
+                    <StatusBadge kind="order" value={order.status} />
+                  </div>
+                  <ul className="divide-y text-sm">
+                    {order.items.map((item, index) => (
+                      <li className="flex items-start justify-between gap-3 py-2" key={`${order.id}-${item.menuItemId}-${index}`}>
+                        <span className="min-w-0">
+                          <span className="font-medium">
+                            {item.quantity}× {item.name}
+                          </span>
+                          <span className="block text-xs text-muted-foreground">
+                            {[item.variantLabel, ...item.addonSnapshots.map((addon) => addon.label), item.notes].filter(Boolean).join(' · ') || 'No modifiers'}
+                          </span>
+                        </span>
+                        <span className="shrink-0 tabular-nums">{money(lineTotal(item))}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="flex items-center justify-between border-t pt-2 text-sm">
+                    <span className="text-muted-foreground">Total</span>
+                    <span className="font-semibold tabular-nums">{money(order.grandTotal)}</span>
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </section>
+        </>
+      )}
+    </CustomerPage>
   );
 }

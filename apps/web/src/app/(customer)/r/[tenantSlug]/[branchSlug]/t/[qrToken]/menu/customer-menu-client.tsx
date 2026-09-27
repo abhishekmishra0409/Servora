@@ -1,24 +1,25 @@
 'use client';
 
-import type { AddonOption, MenuCategory, MenuItem } from '@restaurent/shared';
-import { useEffect, useMemo, useState } from 'react';
+import type { MenuCategory, MenuItem } from '@restaurent/shared';
+import { Search, UtensilsCrossed } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
 
+import { CartBar } from '@/components/cart-bar';
+import { CustomerHeading, CustomerPage } from '@/components/customer-page';
+import { EmptyState } from '@/components/empty-state';
+import { ErrorState } from '@/components/error-state';
+import { LoadingRows } from '@/components/loading-state';
+import { MenuItemCard } from '@/components/menu-item-card';
+import { MenuItemDrawer, type ItemSelection } from '@/components/menu-item-drawer';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { addBucketItem, ApiError, getPublicMenu, getTableContext, type GuestSession, type TableContext } from '@/lib/api-client';
 import { useCustomerRoute } from '@/lib/customer-route';
 import { clearGuestSession, readGuestSession } from '@/lib/customer-storage';
+import { cn } from '@/lib/utils';
 
-type ItemSelection = {
-  addons: AddonOption[];
-  notes: string;
-  quantity: number;
-  variantId: string;
-};
-
-const money = (value: number): string =>
-  new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
-
-const documentId = (value: { _id?: unknown; id?: string }): string =>
-  value.id ?? String(value._id ?? '');
+const documentId = (value: { _id?: unknown; id?: string }): string => value.id ?? String(value._id ?? '');
 
 export function CustomerMenuClient({
   initialCategories,
@@ -32,7 +33,7 @@ export function CustomerMenuClient({
   initialError?: string;
   initialGuest: GuestSession | null;
   initialItems: MenuItem[];
-}) {
+}): ReactNode {
   const { basePath, qrToken } = useCustomerRoute();
   const [context, setContext] = useState<TableContext | null>(initialContext);
   const [guest, setGuest] = useState<GuestSession | null>(initialGuest);
@@ -42,15 +43,15 @@ export function CustomerMenuClient({
   const [allergenFilter, setAllergenFilter] = useState('all');
   const [dietaryFilter, setDietaryFilter] = useState('all');
   const [query, setQuery] = useState('');
-  const [selections, setSelections] = useState<Record<string, ItemSelection>>({});
-  const [busyItemId, setBusyItemId] = useState('');
-  const [notice, setNotice] = useState(initialItems.length ? '' : initialError || 'Loading menu...');
+  const [openItem, setOpenItem] = useState<MenuItem | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [loading, setLoading] = useState(!initialItems.length && !initialError);
   const [error, setError] = useState(initialError);
 
   useEffect(() => {
     if (!qrToken) {
-      setNotice('This customer URL is missing a QR token.');
-      setError('Open a full table URL like /r/{tenant}/{branch}/t/{qrToken}.');
+      setError('Open a full table link like /r/{tenant}/{branch}/t/{qrToken}.');
+      setLoading(false);
       return;
     }
 
@@ -65,20 +66,18 @@ export function CustomerMenuClient({
     getTableContext(qrToken)
       .then(async (nextContext) => {
         const menu = await getPublicMenu(nextContext.tenant.id, nextContext.branch.id);
-        if (!active) {
-          return;
-        }
+        if (!active) return;
         setContext(nextContext);
         setCategories(menu.categories);
         setItems(menu.items);
-        setNotice(menu.items.length ? '' : 'No menu items are available right now.');
+        setError('');
       })
       .catch((nextError: Error) => {
-        if (!active) {
-          return;
-        }
+        if (!active) return;
         setError(nextError.message);
-        setNotice('Menu could not be loaded.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
 
     return () => {
@@ -89,8 +88,7 @@ export function CustomerMenuClient({
   const filteredItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return items.filter((item) => {
-      const itemCategoryId = documentId(item);
-      const categoryMatch = activeCategory === 'all' || item.categoryId === activeCategory || itemCategoryId === activeCategory;
+      const categoryMatch = activeCategory === 'all' || item.categoryId === activeCategory;
       const dietaryMatch = dietaryFilter === 'all' || item.dietaryFlags.includes(dietaryFilter);
       const allergenMatch = allergenFilter === 'all' || !item.allergens.includes(allergenFilter);
       const textMatch =
@@ -104,116 +102,80 @@ export function CustomerMenuClient({
     });
   }, [activeCategory, allergenFilter, dietaryFilter, items, query]);
 
-  const dietaryOptions = useMemo(
-    () => [...new Set(items.flatMap((item) => item.dietaryFlags))].filter(Boolean).sort(),
-    [items],
-  );
-  const allergenOptions = useMemo(
-    () => [...new Set(items.flatMap((item) => item.allergens))].filter(Boolean).sort(),
-    [items],
-  );
+  const dietaryOptions = useMemo(() => [...new Set(items.flatMap((item) => item.dietaryFlags))].filter(Boolean).sort(), [items]);
+  const allergenOptions = useMemo(() => [...new Set(items.flatMap((item) => item.allergens))].filter(Boolean).sort(), [items]);
 
-  function selectionFor(item: MenuItem): ItemSelection {
-    const itemId = documentId(item);
-    return (
-      selections[itemId] ?? {
-        addons: [],
-        notes: '',
-        quantity: 1,
-        variantId: item.variants[0]?.id ?? '',
-      }
-    );
-  }
+  const bucket = context?.tableSession?.bucket;
+  const bucketCount = bucket?.items.reduce((total, line) => total + line.quantity, 0) ?? 0;
+  const canOrder = Boolean(guest && (context?.tableSession?.id ?? guest?.tableSessionId));
 
-  function updateSelection(itemId: string, update: Partial<ItemSelection>): void {
-    setSelections((current) => ({
-      ...current,
-      [itemId]: {
-        addons: [],
-        notes: '',
-        quantity: 1,
-        variantId: '',
-        ...current[itemId],
-        ...update,
-      },
-    }));
-  }
-
-  async function handleAdd(item: MenuItem): Promise<void> {
-    const itemId = documentId(item);
+  async function handleAdd(item: MenuItem, selection: ItemSelection): Promise<void> {
     const tableSessionId = context?.tableSession?.id ?? guest?.tableSessionId;
 
     if (!guest || !tableSessionId) {
-      setError('Join the table before adding dishes.');
+      toast.error('Join the table before adding dishes.');
       window.location.assign(basePath || '/');
       return;
     }
     if (!qrToken) {
-      setError('This customer URL is missing a QR token.');
+      setError('This table link is missing its QR token.');
       return;
     }
 
-    const selection = selectionFor(item);
-    setBusyItemId(itemId);
-    setError('');
+    setAdding(true);
     try {
       await addBucketItem(tableSessionId, guest.guestToken, {
         addons: selection.addons,
-        menuItemId: itemId,
+        menuItemId: documentId(item),
         notes: selection.notes || undefined,
         quantity: selection.quantity,
         variantId: selection.variantId || undefined,
       });
-      const nextContext = await getTableContext(qrToken);
-      setContext(nextContext);
-      setNotice(`${item.name} added to the bucket.`);
+      setContext(await getTableContext(qrToken));
+      setOpenItem(null);
+      toast.success(`${item.name} added to the bucket`);
     } catch (nextError) {
       if (nextError instanceof ApiError && nextError.status === 401 && qrToken) {
         clearGuestSession(qrToken);
         setGuest(null);
-        setError('Your table session expired. Join the table again.');
+        toast.error('Your table session expired. Join the table again.');
         window.location.assign(basePath || '/');
       } else {
-        setError(nextError instanceof Error ? nextError.message : 'Could not add this item.');
+        toast.error(nextError instanceof Error ? nextError.message : 'Could not add this item.');
       }
     } finally {
-      setBusyItemId('');
+      setAdding(false);
     }
   }
 
   return (
-    <main className="customer-main customer-main--mobile">
-      <section className="customer-header">
-        <div>
-          <h1>Restaurent</h1>
-          <p className="muted">{context ? `Table ${context.table.tableNo}` : 'Customer Menu'}</p>
-        </div>
-        <a className="button-link" href={`${basePath}/bucket`}>
-          Bucket {context?.tableSession?.bucket.items.length ? `(${context.tableSession.bucket.items.length})` : ''}
-        </a>
-      </section>
+    <CustomerPage hasCartBar={bucketCount > 0}>
+      <CustomerHeading description={context ? `Table ${context.table.tableNo}` : undefined} title="Menu" />
 
-      <section className="toolbar compact-toolbar customer-menu-toolbar">
-        <label className="customer-search-field">
-          <span className="material-symbols-outlined">search</span>
-          <input
+      <div className="sticky top-14 z-20 -mx-4 space-y-2 bg-background/95 px-4 py-2 backdrop-blur">
+        <div className="relative">
+          <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
             aria-label="Search menu"
+            className="h-10 bg-card pl-9"
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search menu..."
+            placeholder="Search dishes"
             value={query}
           />
-        </label>
-        <div className="segmented-control customer-category-tabs" role="tablist">
-          <button className={activeCategory === 'all' ? 'active' : ''} onClick={() => setActiveCategory('all')} type="button">
-            All
-          </button>
-          {categories.map((category) => {
-            const categoryId = documentId(category);
+        </div>
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
+          {[{ id: 'all', name: 'All' }, ...categories.map((category) => ({ id: documentId(category), name: category.name }))].map((category) => {
+            const active = activeCategory === category.id;
             return (
               <button
-                className={activeCategory === categoryId ? 'active' : ''}
-                key={categoryId}
-                onClick={() => setActiveCategory(categoryId)}
+                aria-selected={active}
+                className={cn(
+                  'shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors',
+                  active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:bg-muted',
+                )}
+                key={category.id}
+                onClick={() => setActiveCategory(category.id)}
+                role="tab"
                 type="button"
               >
                 {category.name}
@@ -221,139 +183,59 @@ export function CustomerMenuClient({
             );
           })}
         </div>
-        <select aria-label="Dietary filter" value={dietaryFilter} onChange={(event) => setDietaryFilter(event.target.value)}>
-          <option value="all">All diets</option>
-          {dietaryOptions.map((flag) => (
-            <option key={flag} value={flag}>
-              {flag}
-            </option>
+        {dietaryOptions.length || allergenOptions.length ? (
+          <div className="grid grid-cols-2 gap-2">
+            <Select onValueChange={setDietaryFilter} value={dietaryFilter}>
+              <SelectTrigger aria-label="Dietary filter" className="h-9 w-full bg-card text-xs" size="sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All diets</SelectItem>
+                {dietaryOptions.map((flag) => (
+                  <SelectItem key={flag} value={flag}>
+                    {flag.replaceAll('_', ' ')}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select onValueChange={setAllergenFilter} value={allergenFilter}>
+              <SelectTrigger aria-label="Allergen filter" className="h-9 w-full bg-card text-xs" size="sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All allergens</SelectItem>
+                {allergenOptions.map((allergen) => (
+                  <SelectItem key={allergen} value={allergen}>
+                    Without {allergen}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+      </div>
+
+      {error ? <ErrorState message={error} /> : null}
+
+      {loading ? (
+        <LoadingRows count={5} />
+      ) : filteredItems.length === 0 ? (
+        <EmptyState
+          description={query || activeCategory !== 'all' ? 'Try another category or clear the search.' : 'The kitchen has not published any dishes yet.'}
+          icon={UtensilsCrossed}
+          title="No dishes found"
+        />
+      ) : (
+        <section className="grid gap-3 md:grid-cols-2">
+          {filteredItems.map((item) => (
+            <MenuItemCard item={item} key={documentId(item)} onOpen={setOpenItem} />
           ))}
-        </select>
-        <select aria-label="Allergen filter" value={allergenFilter} onChange={(event) => setAllergenFilter(event.target.value)}>
-          <option value="all">All allergens</option>
-          {allergenOptions.map((allergen) => (
-            <option key={allergen} value={allergen}>
-              Without {allergen}
-            </option>
-          ))}
-        </select>
-      </section>
+        </section>
+      )}
 
-      {notice ? <p className="notice-text">{notice}</p> : null}
-      {error ? <p className="error-text">{error}</p> : null}
+      <MenuItemDrawer busy={adding} canOrder={canOrder} item={openItem} onAdd={handleAdd} onOpenChange={(open) => (open ? undefined : setOpenItem(null))} />
 
-      <section className="menu-grid">
-        {filteredItems.map((item) => {
-          const itemId = documentId(item);
-          const selection = selectionFor(item);
-          const selectedVariant = item.variants.find((variant) => variant.id === selection.variantId);
-          const linePrice =
-            item.price +
-            (selectedVariant?.priceDelta ?? 0) +
-            selection.addons.reduce((total, addon) => total + addon.priceDelta, 0);
-
-          return (
-            <article className={`menu-card ${!item.available ? 'menu-card--disabled' : ''}`} key={itemId}>
-              <div className="menu-card__media">
-                {item.imageUrl ? <img alt={item.name} src={item.imageUrl} /> : <div className="menu-card__placeholder" />}
-                {item.dietaryFlags[0] ? (
-                  <p className="menu-card__badge">
-                    <span className={item.dietaryFlags[0].toLowerCase().includes('non') ? 'dot dot--red' : 'dot dot--green'} />
-                    {item.dietaryFlags[0]}
-                  </p>
-                ) : null}
-                {!item.available ? <p className="menu-card__badge menu-card__badge--muted">Out of Stock</p> : null}
-              </div>
-              <div>
-                <h2>{item.name}</h2>
-                <p className="muted">{item.description}</p>
-              </div>
-              <strong>{money(linePrice)}</strong>
-              <p className="menu-meta">
-                <span className="material-symbols-outlined">local_fire_department</span>
-                450 cal
-              </p>
-
-              {item.variants.length ? (
-                <label>
-                  Variant
-                  <select
-                    onChange={(event) => updateSelection(itemId, { variantId: event.target.value })}
-                    value={selection.variantId}
-                  >
-                    {item.variants.map((variant) => (
-                      <option key={variant.id} value={variant.id}>
-                        {variant.label} {variant.priceDelta ? `+ ${money(variant.priceDelta)}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-
-              {item.addonGroups.map((group) => (
-                <fieldset key={group.id}>
-                  <legend>{group.label}</legend>
-                  {group.options.map((option) => {
-                    const checked = selection.addons.some((addon) => addon.id === option.id);
-                    return (
-                      <label className="checkbox-row" key={option.id}>
-                        <input
-                          checked={checked}
-                          onChange={(event) => {
-                            const nextAddons = event.target.checked
-                              ? [...selection.addons, option].slice(0, group.maxSelections || undefined)
-                              : selection.addons.filter((addon) => addon.id !== option.id);
-                            updateSelection(itemId, { addons: nextAddons });
-                          }}
-                          type="checkbox"
-                        />
-                        {option.label} {option.priceDelta ? `+ ${money(option.priceDelta)}` : ''}
-                      </label>
-                    );
-                  })}
-                </fieldset>
-              ))}
-
-              <label>
-                Notes
-                <input
-                  onChange={(event) => updateSelection(itemId, { notes: event.target.value })}
-                  placeholder="Less spicy, no onion..."
-                  value={selection.notes}
-                />
-              </label>
-
-              <div className="quantity-row">
-                <button
-                  onClick={() => updateSelection(itemId, { quantity: Math.max(1, selection.quantity - 1) })}
-                  type="button"
-                >
-                  <span className="material-symbols-outlined">remove</span>
-                </button>
-                <span>{selection.quantity}</span>
-                <button onClick={() => updateSelection(itemId, { quantity: selection.quantity + 1 })} type="button">
-                  <span className="material-symbols-outlined">add</span>
-                </button>
-              </div>
-
-              <button className="menu-card__add" disabled={busyItemId === itemId || !item.available} onClick={() => void handleAdd(item)} type="button">
-                {busyItemId === itemId ? (
-                  'Adding...'
-                ) : !item.available ? (
-                  'Unavailable'
-                ) : guest ? (
-                  <>
-                    <span className="material-symbols-outlined">shopping_basket</span>
-                    Add
-                  </>
-                ) : (
-                  'Join first'
-                )}
-              </button>
-            </article>
-          );
-        })}
-      </section>
-    </main>
+      <CartBar count={bucketCount} href={`${basePath}/bucket`} total={bucket?.totals.grandTotal ?? 0} />
+    </CustomerPage>
   );
 }

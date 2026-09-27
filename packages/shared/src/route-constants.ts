@@ -2,12 +2,17 @@ export const API_PREFIX = '/api/v1';
 
 export const CMS_ROUTES = {
   analytics: '/analytics',
+  auditLogs: '/audit-logs',
+  bills: '/bills',
+  branches: '/branches',
   dashboard: '/dashboard',
+  floors: '/floors',
+  kitchenBoard: '/kitchen-board',
   menuCategories: '/menu/categories',
   menuItems: '/menu/items',
   menuSchedules: '/menu/schedules',
   orders: '/orders',
-  qr: '/qr',
+  roles: '/staff/roles',
   serviceRequests: '/service-requests',
   settings: '/settings',
   staff: '/staff',

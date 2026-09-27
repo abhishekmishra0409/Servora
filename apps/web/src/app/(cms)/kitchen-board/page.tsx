@@ -1,139 +1,98 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useState } from 'react';
+import { toast } from 'sonner';
 
-import {
-  documentId,
-  getLiveOrders,
-  updateOrderStatus,
-  type LiveOrder,
-} from '../../../lib/api-client';
-import { readCmsSettings } from '../../../lib/cms-storage';
-import { createSocketClient } from '../../../lib/socket';
+import { useCmsSession } from '@/components/cms-session-provider';
+import { KanbanBoard } from '@/components/kanban-board';
+import { LoadingKanban } from '@/components/loading-state';
+import { OrderTicket } from '@/components/order-ticket';
+import { PageShell } from '@/components/page-shell';
+import { Button } from '@/components/ui/button';
+import { documentId, getLiveOrders, updateOrderStatus, type LiveOrder } from '@/lib/api-client';
+import { errorMessage } from '@/lib/async-state';
+import { elapsedSince } from '@/lib/format';
+import { toneFor } from '@/lib/status-tone';
+import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 const lanes = [
-  { label: 'Accepted', next: 'preparing', nextLabel: 'Start preparing', status: 'accepted' },
-  { label: 'Preparing', next: 'ready', nextLabel: 'Mark ready', status: 'preparing' },
-  { label: 'Ready', next: 'served', nextLabel: 'Clear ticket', status: 'ready' },
+  { next: 'preparing', nextLabel: 'Start preparing', permission: 'orders:status-preparing', status: 'accepted', title: 'Accepted' },
+  { next: 'ready', nextLabel: 'Mark ready', permission: 'orders:status-ready', status: 'preparing', title: 'Preparing' },
+  { next: 'served', nextLabel: 'Clear ticket', permission: 'orders:status-served', status: 'ready', title: 'Ready' },
 ];
 
-function elapsed(submittedAt?: string): string {
-  if (!submittedAt) return 'New';
-  const minutes = Math.floor((Date.now() - new Date(submittedAt).getTime()) / 60000);
-  return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-}
-
 export default function KitchenBoardPage() {
-  const [orders, setOrders] = useState<LiveOrder[]>([]);
+  const { can } = useCmsSession();
   const [busy, setBusy] = useState('');
-  const [message, setMessage] = useState('Loading kitchen queue...');
-
-  const settings = useMemo(() => (typeof window === 'undefined' ? null : readCmsSettings()), []);
-
-  async function load(): Promise<void> {
-    if (!settings?.branchId || !settings.token) {
-      setMessage('Sign in to load the kitchen board.');
-      return;
-    }
-
-    try {
-      const nextOrders = await getLiveOrders(settings.branchId, settings.token);
-      const kitchenOrders = nextOrders.filter((order) => ['accepted', 'preparing', 'ready'].includes(order.status));
-      setOrders(kitchenOrders);
-      setMessage(kitchenOrders.length ? '' : 'No active kitchen tickets.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not load kitchen tickets.');
-    }
-  }
-
-  useEffect(() => {
-    void load();
-    const socket = settings?.token ? createSocketClient(settings.token) : null;
-    socket?.on('order.created', () => void load());
-    socket?.on('order.status_updated', () => void load());
-    socket?.connect();
-    const interval = window.setInterval(() => void load(), 30000);
-    return () => {
-      window.clearInterval(interval);
-      socket?.disconnect();
-    };
-  }, []);
+  const resource = useCmsResource<LiveOrder[]>(
+    async ({ branchId, token }) =>
+      (await getLiveOrders(branchId, token)).filter((order) => ['accepted', 'preparing', 'ready'].includes(order.status)),
+    { events: ['order.created', 'order.status_updated'], initial: [], pollMs: 30000 },
+  );
+  const orders = resource.data;
 
   async function advance(order: LiveOrder, nextStatus: string): Promise<void> {
-    if (!settings?.token) return;
     const id = documentId(order);
     setBusy(id);
     try {
-      await updateOrderStatus(id, nextStatus, settings.token);
-      await load();
+      await updateOrderStatus(id, nextStatus, readCmsContext().token);
+      await resource.reload();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not update ticket.');
+      toast.error(errorMessage(error, 'Could not update ticket.'));
     } finally {
       setBusy('');
     }
   }
 
+  const columns = lanes.map((lane) => ({
+    items: orders.filter((order) => order.status === lane.status),
+    key: lane.status,
+    lane,
+    title: lane.title,
+    tone: toneFor('order', lane.status),
+  }));
+
   return (
-    <main>
-      <div className="page-shell">
-        <section className="customer-header">
-          <div>
-            <p className="eyebrow">Kitchen</p>
-            <h1>Kitchen Board</h1>
-            <p className="muted">Accepted, preparing, and ready tickets from the live branch queue.</p>
-          </div>
-          <button onClick={() => void load()} type="button">
-            <span aria-hidden="true" className="material-symbols-outlined">refresh</span>
-            Refresh
-          </button>
-        </section>
-
-        {message ? <p className="notice-text">{message}</p> : null}
-
-        <section className="cms-kanban">
-          {lanes.map((lane) => {
-            const laneOrders = orders.filter((order) => order.status === lane.status);
-
+    <PageShell
+      description="Accepted, preparing, and ready tickets from the live queue. Refreshes every 30 seconds."
+      eyebrow="Kitchen"
+      title="Kitchen board"
+      resource={resource}
+      what="kitchen tickets"
+    >
+      {resource.status === 'loading' ? (
+        <LoadingKanban columns={3} />
+      ) : (
+        <KanbanBoard
+          columns={columns}
+          emptyLabel="No tickets in this lane"
+          itemKey={documentId}
+          renderCard={(order, column) => {
+            const id = documentId(order);
+            const lane = lanes.find((item) => item.status === column.key) ?? lanes[0]!;
             return (
-              <article className="cms-column" key={lane.status}>
-                <header>
-                  <h2>{lane.label}</h2>
-                  <span>{laneOrders.length}</span>
-                </header>
-                {laneOrders.map((order) => {
-                  const id = documentId(order);
-                  return (
-                    <div className="cms-ticket" key={id}>
-                      <div className="cms-ticket__head">
-                        <strong>{order.orderNo}</strong>
-                        <span>{elapsed(order.submittedAt)}</span>
-                      </div>
-                      <p className="muted">Table ...{order.tableId.slice(-4)}</p>
-                      <ul>
-                        {order.items.map((item, index) => (
-                          <li key={`${id}-${item.menuItemId}-${index}`}>
-                            <span>{item.quantity}x {item.name}</span>
-                            <span>{item.variantLabel ?? ''}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="action-row">
-                        <Link className="button-secondary" href={`/kitchen-board/${id}`}>
-                          View ticket
-                        </Link>
-                        <button disabled={busy === id} onClick={() => void advance(order, lane.next)} type="button">
-                          {lane.nextLabel}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </article>
+              <OrderTicket
+                actions={
+                  <>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/kitchen-board/${id}`}>View ticket</Link>
+                    </Button>
+                    {can(lane.permission) ? (
+                      <Button disabled={busy === id} onClick={() => void advance(order, lane.next)} size="sm" type="button">
+                        {lane.nextLabel}
+                      </Button>
+                    ) : null}
+                  </>
+                }
+                meta={elapsedSince(order.submittedAt)}
+                order={order}
+                showPrices={false}
+              />
             );
-          })}
-        </section>
-      </div>
-    </main>
+          }}
+        />
+      )}
+    </PageShell>
   );
 }

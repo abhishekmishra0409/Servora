@@ -50,6 +50,8 @@ jobs:
       - name: Unit and integration tests
         run: npm run test
         env:
+          CORS_ORIGINS: http://127.0.0.1:3000
+          WEB_URL: http://127.0.0.1:3000
           JWT_ACCESS_SECRET: ci-access
           JWT_REFRESH_SECRET: ci-refresh
           JWT_GUEST_SECRET: ci-guest

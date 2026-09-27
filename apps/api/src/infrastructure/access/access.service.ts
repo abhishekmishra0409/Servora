@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { StaffJwtPayload } from '@restaurent/shared';
-import { SubscriptionStatus, UserRole } from '@restaurent/shared';
+import { isPlatformRoleKey, SubscriptionStatus } from '@restaurent/shared';
 import { Model } from 'mongoose';
 
 import { Branch } from '../../database/schemas/branch.schema';
@@ -14,6 +14,7 @@ import { Payment } from '../../database/schemas/payment.schema';
 import { Subscription } from '../../database/schemas/subscription.schema';
 import { RestaurantTable } from '../../database/schemas/table.schema';
 import { Tenant } from '../../database/schemas/tenant.schema';
+import { EffectiveGrant, PermissionResolverService } from './permission-resolver.service';
 
 const healthySubscriptionStatuses = [
   SubscriptionStatus.Active,
@@ -34,14 +35,26 @@ export class AccessService {
     @InjectModel(MenuCategory.name) private readonly menuCategoryModel: Model<MenuCategory>,
     @InjectModel(Subscription.name) private readonly subscriptionModel: Model<Subscription>,
     @InjectModel(Tenant.name) private readonly tenantModel: Model<Tenant>,
+    private readonly permissionResolver: PermissionResolverService,
   ) { }
 
   private isGlobalAdmin(user: StaffJwtPayload): boolean {
-    return [UserRole.SuperAdmin, UserRole.PlatformAdmin].includes(user.role);
+    return isPlatformRoleKey(user.role);
   }
 
-  async assertTenantAccess(user: StaffJwtPayload, tenantId: string): Promise<void> {
-    if (this.isGlobalAdmin(user) || user.tenantId === tenantId) {
+  async assertTenantAccess(user: StaffJwtPayload, tenantId: string, required?: readonly string[]): Promise<void> {
+    if (this.isGlobalAdmin(user)) {
+      await this.assertTenantSubscriptionUsable(user, tenantId);
+      return;
+    }
+
+    if (user.tenantId === tenantId) {
+      if (required?.length) {
+        const permissions = await this.permissionResolver.resolveTenantWide(user.sub, tenantId);
+        if (!required.some((permission) => permissions.has(permission))) {
+          throw new ForbiddenException('Missing required permission');
+        }
+      }
       await this.assertTenantSubscriptionUsable(user, tenantId);
       return;
     }
@@ -50,27 +63,53 @@ export class AccessService {
     if (!membership) {
       throw new ForbiddenException('Tenant access denied');
     }
+
+    if (required?.length) {
+      const permissions = await this.permissionResolver.resolveTenantWide(user.sub, tenantId);
+      if (!required.some((permission) => permissions.has(permission))) {
+        throw new ForbiddenException('Missing required permission');
+      }
+    }
+
     await this.assertTenantSubscriptionUsable(user, tenantId);
   }
 
-  async assertBranchAccess(user: StaffJwtPayload, branchId: string): Promise<void> {
-    if (this.isGlobalAdmin(user) || user.branchId === branchId) {
+  /**
+   * Authorises access to a branch and returns the permissions the caller
+   * actually holds *there*.
+   *
+   * This previously short-circuited on `user.branchId === branchId` and
+   * otherwise only checked that a membership existed — never its role. A user
+   * who was Manager at branch A and Waiter at branch B therefore passed the
+   * check for B and then operated on it with A's Manager rights. Both the
+   * short-circuit and the existence-only check are gone: every branch access
+   * resolves the membership covering that specific branch.
+   */
+  async assertBranchAccess(
+    user: StaffJwtPayload,
+    branchId: string,
+    required?: readonly string[],
+  ): Promise<EffectiveGrant> {
+    if (this.isGlobalAdmin(user)) {
       await this.assertTenantSubscriptionUsable(user, user.tenantId);
-      return;
+      return {
+        permissions: await this.permissionResolver.permissionsForRole(user.tenantId, user.role),
+        roleKey: user.role,
+      };
     }
 
-    const membership = await this.membershipModel
-      .exists({
-        branchId,
-        tenantId: user.tenantId,
-        userId: user.sub,
-      })
-      .exec();
+    const grant = await this.permissionResolver.resolveForBranch(user.sub, user.tenantId, branchId);
 
-    if (!membership) {
+    if (!grant) {
       throw new ForbiddenException('Branch access denied');
     }
+
+    if (required?.length && !required.some((permission) => grant.permissions.has(permission))) {
+      throw new ForbiddenException('Missing required permission');
+    }
+
     await this.assertTenantSubscriptionUsable(user, user.tenantId);
+    return grant;
   }
 
   async assertTenantActive(tenantId: string): Promise<void> {

@@ -3,6 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import {
   BranchServiceMode,
   DEFAULT_TENANT_FEATURES,
+  ENTITLED_RESOURCES,
+  PLAN_FEATURES,
   SubscriptionStatus,
   UserRole,
   slugify,
@@ -19,11 +21,13 @@ import { Subscription } from '../../database/schemas/subscription.schema';
 import { Tenant } from '../../database/schemas/tenant.schema';
 import { User } from '../../database/schemas/user.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
+import { EntitlementsService } from '../../infrastructure/entitlements/entitlements.service';
 import { BillingService } from '../billing/billing.service';
 import {
   CreateTenantDto,
   UpdatePlanSettingsDto,
   UpdateTenantDto,
+  UpdateTenantEntitlementsDto,
   UpdateTenantFeaturesDto,
   UpdateTenantStatusDto,
 } from './dto';
@@ -45,6 +49,7 @@ export class SuperAdminService {
     @InjectModel(AuditLog.name) private readonly auditLogModel: Model<AuditLog>,
     @InjectModel(Order.name) private readonly orderModel: Model<Order>,
     private readonly billingService: BillingService,
+    private readonly entitlements: EntitlementsService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -76,6 +81,8 @@ export class SuperAdminService {
       ...(dto.perks ? { perks: dto.perks.map((item) => item.trim()).filter(Boolean) } : {}),
     };
     const plan = await this.billingService.updatePlanSettings(code, settings);
+    // A plan's limits changed, so every tenant on it must re-resolve.
+    this.entitlements.invalidateAll();
     await this.auditService.record({
       action: 'platform.subscription_plan_settings_updated',
       actorUserId: user.sub,
@@ -185,6 +192,51 @@ export class SuperAdminService {
 
   async updateTenantStatus(id: string, dto: UpdateTenantStatusDto, user: StaffJwtPayload): Promise<unknown> {
     return this.updateTenant(id, { status: dto.status }, user);
+  }
+
+  /**
+   * Per-tenant limit overrides, for custom deals that don't fit a plan tier.
+   * A null value clears the override so the tenant inherits the plan again.
+   */
+  async updateTenantEntitlements(
+    id: string,
+    dto: UpdateTenantEntitlementsDto,
+    user: StaffJwtPayload,
+  ): Promise<unknown> {
+    const overrides: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(dto.overrides ?? {})) {
+      if (ENTITLED_RESOURCES.includes(key as never) && typeof value === 'number' && value >= 0) {
+        overrides[key] = value;
+      }
+    }
+
+    if (dto.features) {
+      overrides.features = dto.features.filter((feature) =>
+        PLAN_FEATURES.some((known) => known.key === feature),
+      );
+    }
+
+    const tenant = await this.tenantModel
+      .findByIdAndUpdate(id, { $set: { entitlementOverrides: overrides } }, { returnDocument: 'after' })
+      .lean<LeanRecord>()
+      .exec();
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant not found');
+    }
+
+    this.entitlements.invalidate(String(tenant._id));
+    await this.auditService.record({
+      action: 'platform.tenant_entitlements_updated',
+      actorUserId: user.sub,
+      entityId: String(tenant._id),
+      entityType: 'tenant',
+      payload: { overrides },
+      tenantId: String(tenant._id),
+    });
+
+    return this.getTenant(String(tenant._id));
   }
 
   async updateTenantFeatures(id: string, dto: UpdateTenantFeaturesDto, user: StaffJwtPayload): Promise<unknown> {

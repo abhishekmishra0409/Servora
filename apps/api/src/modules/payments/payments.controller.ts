@@ -4,14 +4,16 @@ import { UserRole } from '@restaurent/shared';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { StaffJwtGuard } from '../../common/guards/staff-jwt.guard';
 import { AccessService } from '../../infrastructure/access/access.service';
 import { CreatePaymentCheckoutDto, MarkPaymentPaidDto } from './dto';
 import { PaymentsService } from './payments.service';
 
 @Controller()
-@UseGuards(StaffJwtGuard, RolesGuard)
+@UseGuards(StaffJwtGuard, RolesGuard, PermissionsGuard)
 export class PaymentsController {
   constructor(
     private readonly accessService: AccessService,
@@ -19,6 +21,7 @@ export class PaymentsController {
   ) {}
 
   @Post('orders/:id/bill-request')
+  @RequirePermissions('bills:request')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
   async requestBill(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertOrderAccess(user, id);
@@ -26,6 +29,7 @@ export class PaymentsController {
   }
 
   @Get('payments/bills')
+  @RequirePermissions('bills:view')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
   async listBills(@Query('branchId') branchId: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertBranchAccess(user, branchId);
@@ -33,6 +37,7 @@ export class PaymentsController {
   }
 
   @Post('payments/checkout-session')
+  @RequirePermissions('bills:checkout')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Cashier)
   async createCheckoutSession(@Body() dto: CreatePaymentCheckoutDto, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertOrderAccess(user, dto.orderId);
@@ -40,6 +45,7 @@ export class PaymentsController {
   }
 
   @Get('payments/:id')
+  @RequirePermissions('bills:view')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
   async getById(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertPaymentAccess(user, id);
@@ -47,6 +53,7 @@ export class PaymentsController {
   }
 
   @Post('payments/:id/mark-cash-paid')
+  @RequirePermissions('bills:mark-cash-paid')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
   async markCashPaid(@Param('id') id: string, @CurrentUser() user: StaffJwtPayload): Promise<unknown> {
     await this.accessService.assertPaymentAccess(user, id);
@@ -54,6 +61,7 @@ export class PaymentsController {
   }
 
   @Post('payments/:id/mark-paid')
+  @RequirePermissions('bills:mark-paid')
   @Roles(UserRole.PlatformAdmin, UserRole.Owner, UserRole.Manager, UserRole.Waiter, UserRole.Cashier)
   async markPaid(
     @Param('id') id: string,

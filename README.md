@@ -1,4 +1,4 @@
-# Restaurent SaaS Starter
+# Servora
 
 This monorepo is a runnable starter for a multi-tenant restaurant operating system with one backend app and one unified frontend app.
 
@@ -6,7 +6,7 @@ This monorepo is a runnable starter for a multi-tenant restaurant operating syst
 
 - `apps/api`: active NestJS backend with REST APIs, MongoDB/Mongoose, JWT auth, webhooks, and Socket.IO gateways.
 - `apps/web`: active Next.js frontend with CMS, waiter, kitchen, bills, role-based staff workspace, and customer QR/PWA surfaces.
-- `packages/shared`: shared domain types, permissions, event names, and API contracts.
+- `packages/shared`: shared domain types, the screen permission registry, plan entitlement defaults, event names, and API contracts.
 
 ## Repo Structure
 
@@ -19,6 +19,19 @@ packages/
 docs/
 scripts/
 ```
+
+## Access Control And Plans
+
+Staff access is permission-based, not role-name based. Every staff route
+declares a `<screen>:<action>` permission, and restaurant owners can build their
+own roles from a screen-by-action grid in the CMS (`/staff/roles`).
+
+Subscriptions grant numeric caps (staff, outlets, tables, monthly bills, menu
+items, custom roles) and feature flags. Reaching a cap blocks **new** records
+only; existing data always keeps working.
+
+Read [docs/permissions.md](docs/permissions.md) before changing roles,
+permissions, or plan limits.
 
 ## Prerequisites
 
@@ -130,7 +143,7 @@ Set the Cloudinary environment values in `.env` before using menu media upload s
 - `apps/api/Dockerfile` and `apps/web/Dockerfile` can be deployed independently.
 - Same-origin hosting: leave `NEXT_PUBLIC_*` blank and let the Next proxy reach the API. Split-domain hosting: set `NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_REALTIME_URL` to the API origin (rebuild the web app after changing them).
 - Set backend `CORS_ORIGINS` and `WEB_URL` to the hosted web origin.
-- Managed MongoDB is the expected production default. In production, indexes are not built on boot — run `npm run sync-indexes` after deploy.
+- Managed MongoDB is the expected production default. In production, indexes are not built on boot — run `npm run sync-indexes` after deploy. This is required after any release that adds a collection or index (the `roles` collection and the `memberships` role index were added this way).
 - Set strong, distinct `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` / `JWT_GUEST_SECRET` (the API refuses to boot with placeholder values). Generate with `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`.
 - Keep billing webhooks source-of-truth driven and idempotent in every environment; `STRIPE_WEBHOOK_SECRET` is required whenever Stripe is configured (signatures are verified in all environments).
 
@@ -146,5 +159,8 @@ secrets manager for production rather than a plaintext file.
 - MongoDB reachable from the API app.
 - Seed data creates a tenant, branch, users, menu, tables, and QR codes.
 - Customer table join and bucket submit produce an order once per idempotency key.
+- A tenant-defined role shows the right sidebar and is refused on screens it lacks.
+- Deactivating a staff account ends their session at the next token refresh.
+- Reaching a plan cap blocks new records but leaves existing ones working.
 - Waiter-confirmed branches keep new orders pending until confirmation.
 - Billing webhooks safely ignore duplicate deliveries.

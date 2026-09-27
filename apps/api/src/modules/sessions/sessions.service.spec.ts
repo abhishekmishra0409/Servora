@@ -33,6 +33,11 @@ describe('SessionsService table status realtime events', () => {
       findOneAndUpdate: jest.fn().mockReturnValue(execResult(tableUpdateResult)),
     };
 
+    const branchModel = {
+      findById: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({ lean: jest.fn().mockReturnValue(execResult({ status: 'active' })) }),
+      }),
+    };
     const service = new SessionsService(
       { findOne: jest.fn().mockReturnValue(execResult(qrCode)) } as never,
       { create: jest.fn(), findOne: jest.fn().mockReturnValue(execResult(session)) } as never,
@@ -40,7 +45,7 @@ describe('SessionsService table status realtime events', () => {
       {} as never,
       {} as never,
       {} as never,
-      {} as never,
+      branchModel as never,
       {} as never,
       { signAsync: jest.fn().mockResolvedValue('guest-token') } as never,
       { getOrThrow: jest.fn().mockReturnValue('test-secret') } as never,

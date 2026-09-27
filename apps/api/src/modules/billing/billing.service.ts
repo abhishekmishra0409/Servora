@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import Stripe from 'stripe';
 import { Model } from 'mongoose';
-import { SubscriptionStatus } from '@restaurent/shared';
+import { PLAN_DEFAULTS, SubscriptionStatus } from '@restaurent/shared';
 
 import { Subscription } from '../../database/schemas/subscription.schema';
 import { SubscriptionPlan } from '../../database/schemas/subscription-plan.schema';
@@ -28,6 +28,9 @@ export interface BillingPlan {
   description: string;
   employeeLimit: number;
   interval?: string;
+  customRoleLimit: number;
+  features: string[];
+  menuItemLimit: number;
   monthlyBillLimit: number;
   monthlyPrice: number;
   name: string;
@@ -53,6 +56,9 @@ const defaultPlanSettings: Record<PlanCode, Omit<
     badge: 'Scale',
     branchLimit: 0,
     code: 'enterprise',
+    customRoleLimit: PLAN_DEFAULTS.enterprise.limits.customRoles,
+    features: [...PLAN_DEFAULTS.enterprise.features],
+    menuItemLimit: PLAN_DEFAULTS.enterprise.limits.menuItems,
     description: 'For multi-location restaurants that need scale, controls, and priority support.',
     employeeLimit: 0,
     monthlyBillLimit: 0,
@@ -71,6 +77,9 @@ const defaultPlanSettings: Record<PlanCode, Omit<
     badge: 'Popular',
     branchLimit: 3,
     code: 'growth',
+    customRoleLimit: PLAN_DEFAULTS.growth.limits.customRoles,
+    features: [...PLAN_DEFAULTS.growth.features],
+    menuItemLimit: PLAN_DEFAULTS.growth.limits.menuItems,
     description: 'For growing restaurants with more staff, higher billing volume, and stronger analytics.',
     employeeLimit: 25,
     monthlyBillLimit: 1500,
@@ -89,6 +98,9 @@ const defaultPlanSettings: Record<PlanCode, Omit<
     badge: 'Starter',
     branchLimit: 1,
     code: 'launch',
+    customRoleLimit: PLAN_DEFAULTS.launch.limits.customRoles,
+    features: [...PLAN_DEFAULTS.launch.features],
+    menuItemLimit: PLAN_DEFAULTS.launch.limits.menuItems,
     description: 'For a single restaurant starting with QR ordering, billing, and basic staff operations.',
     employeeLimit: 8,
     monthlyBillLimit: 300,
@@ -633,7 +645,12 @@ export class BillingService {
       branchLimit: Number(saved?.branchLimit ?? defaults.branchLimit),
       code,
       description: String(saved?.description ?? defaults.description),
+      customRoleLimit: Number(saved?.customRoleLimit ?? defaults.customRoleLimit),
       employeeLimit: Number(saved?.employeeLimit ?? defaults.employeeLimit),
+      features: Array.isArray(saved?.features) && saved.features.length
+        ? saved.features.map((feature) => String(feature)).filter(Boolean)
+        : defaults.features,
+      menuItemLimit: Number(saved?.menuItemLimit ?? defaults.menuItemLimit),
       monthlyBillLimit: Number(saved?.monthlyBillLimit ?? defaults.monthlyBillLimit),
       perks: Array.isArray(saved?.perks) && saved.perks.length
         ? saved.perks.map((perk) => String(perk)).filter(Boolean)
@@ -660,8 +677,11 @@ export class BillingService {
     for (const key of [
       'badge',
       'branchLimit',
+      'customRoleLimit',
       'description',
       'employeeLimit',
+      'features',
+      'menuItemLimit',
       'monthlyBillLimit',
       'perks',
       'sortOrder',

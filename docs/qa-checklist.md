@@ -1,6 +1,12 @@
 # QA Checklist
 
 - Staff login, refresh, and logout work for owner, manager, waiter, kitchen, and cashier roles.
+- Deactivating a staff account or deleting their membership ends the session at the next refresh.
+- A user holding roles at two outlets gets the role for the outlet they switch to, not the other one.
+- A tenant-defined role produces a correct, non-empty sidebar and is refused on screens it lacks.
+- Editing a role's permissions takes effect on an existing session without re-login.
+- A role cannot be deleted while staff still hold it, and cannot be edited into locking its own holder out.
+- Creating a role with a platform permission or a built-in role name is refused.
 - Branch service mode toggles between waiter-confirmed and self-service order starts.
 - Duplicate bucket submit requests with the same idempotency key do not create duplicate orders.
 - API mutations complete without requiring Redis, BullMQ, or background worker processors.
@@ -8,6 +14,10 @@
 - Cross-tenant and cross-branch reads or mutations are rejected for orders, payments, tables, floors, menu, staff, and branches.
 - Payment lifecycle covers bill requested, cash paid, Stripe success, Stripe failure, and table close only after settlement.
 - Analytics date filters count revenue in the selected branch/date range.
+- Reaching a plan cap blocks new staff, tables, outlets, bills, and roles with a PLAN_LIMIT_REACHED 403, while existing records keep working.
+- Usage meters on the subscription screen match the actual record counts.
+- Archiving an outlet is refused when it is the tenant's last active one.
+- A downloaded table QR (PNG or the outlet PDF) carries the restaurant name, outlet, table number, and a code that resolves to that table's customer URL.
 - CMS audit logs and floor management pages render loading, empty, success, and error states.
 - Customer menu dietary and allergen filters work with live menu data.
 - `/ready` reports unhealthy when MongoDB is unavailable.

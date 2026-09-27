@@ -4,13 +4,19 @@
 
 - Dashboard: KPIs, live order queue, service request signals, and realtime branch updates.
 - Orders: grouped status list, confirm/reject actions, and order state transitions.
-- Tables: table CRUD, QR regeneration, realtime table status, and floor-aware operations.
+- Tables: table CRUD, customer QR preview, regeneration, and download (PNG per table or one PDF for the whole outlet), realtime table status, and floor-aware operations. There is no separate QR screen.
 - Floors: create, update, and delete branch floors.
-- QR: QR state, regenerate, print, and export actions.
 - Menu item editor: basics, pricing, add-ons, scheduling, Cloudinary upload, and media preview.
 - Audit logs: owner/manager review of staff, menu, table, order, service, and billing actions.
 - Analytics: branch overview and menu mix with realtime refresh.
-- Subscription: SaaS billing and portal handoff.
+- Staff: staff accounts per outlet, with the role picker fed from this tenant's
+  built-in and custom roles.
+- Roles and Access (`/staff/roles`): build tenant-defined roles on a screen-by-
+  action grid, starting from a built-in template. Owner-only by default.
+- Outlets (`/branches`): visible to any staff role; creating, renaming, and
+  archiving are owner-level and additionally gated by the plan's outlet cap and
+  the `multi_outlet` feature. The last active outlet cannot be archived.
+- Subscription: SaaS billing, portal handoff, and plan usage meters.
 
 ## Customer PWA
 

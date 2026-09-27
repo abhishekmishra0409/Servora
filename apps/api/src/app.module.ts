@@ -8,6 +8,7 @@ import { validateEnv } from './config/validate-env';
 import { DatabaseModule } from './database/mongoose.module';
 import { AccessModule } from './infrastructure/access/access.module';
 import { AuditModule } from './infrastructure/audit/audit.module';
+import { EntitlementsModule } from './infrastructure/entitlements/entitlements.module';
 import { RealtimeGatewayModule } from './infrastructure/realtime/realtime-gateway.module';
 import { RealtimePublisherModule } from './infrastructure/realtime/realtime-publisher.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
@@ -15,6 +16,7 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { BranchesModule } from './modules/branches/branches.module';
+import { CmsEntitlementsModule } from './modules/entitlements/cms-entitlements.module';
 import { FloorsModule } from './modules/floors/floors.module';
 import { HealthModule } from './modules/health/health.module';
 import { MediaModule } from './modules/media/media.module';
@@ -22,6 +24,7 @@ import { MenuModule } from './modules/menu/menu.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { PublicModule } from './modules/public/public.module';
+import { RolesModule } from './modules/roles/roles.module';
 import { ServiceRequestsModule } from './modules/service-requests/service-requests.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { StaffModule } from './modules/staff/staff.module';
@@ -53,6 +56,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     DatabaseModule,
     AccessModule,
     AuditModule,
+    EntitlementsModule,
     RealtimePublisherModule,
     RealtimeGatewayModule,
     HealthModule,
@@ -69,6 +73,8 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     PaymentsModule,
     PublicModule,
     ServiceRequestsModule,
+    CmsEntitlementsModule,
+    RolesModule,
     StaffModule,
     MediaModule,
     AnalyticsModule,

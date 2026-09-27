@@ -1,5 +1,5 @@
-import { SuperAdminConsole } from '../super-admin-console';
+import { SettingsView } from '../_components/settings-view';
 
-export default function SuperAdminSettingsPage() {
-  return <SuperAdminConsole view="settings" />;
+export default function Page() {
+  return <SettingsView />;
 }

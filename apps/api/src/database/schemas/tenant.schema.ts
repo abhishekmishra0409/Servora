@@ -22,6 +22,14 @@ export class Tenant {
 
   @Prop({ type: [String], default: [] })
   enabledFeatures!: string[];
+
+  /**
+   * Per-tenant entitlement overrides for custom deals. Any limit set here wins
+   * over the plan's value; absent keys inherit. Kept on the tenant document
+   * because it is already loaded on every access check.
+   */
+  @Prop({ type: Object, default: {} })
+  entitlementOverrides!: Record<string, unknown>;
 }
 
 export const TenantSchema = SchemaFactory.createForClass(Tenant);

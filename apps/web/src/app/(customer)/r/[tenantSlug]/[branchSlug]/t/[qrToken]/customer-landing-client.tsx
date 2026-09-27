@@ -1,10 +1,27 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { ArrowRight, Armchair, MapPin, ShoppingBasket, Users, UtensilsCrossed } from 'lucide-react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 
+import { CustomerPage } from '@/components/customer-page';
+import { FormField } from '@/components/form-field';
+import { InlineSpinner } from '@/components/loading-state';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { getTableContext, joinTable, type GuestSession, type TableContext } from '@/lib/api-client';
 import { useCustomerRoute } from '@/lib/customer-route';
 import { readGuestSession, writeGuestSession } from '@/lib/customer-storage';
+import { humanize } from '@/lib/status-tone';
+import { cn } from '@/lib/utils';
+
+const steps = [
+  { icon: Users, label: 'Join' },
+  { icon: UtensilsCrossed, label: 'Order' },
+  { icon: ShoppingBasket, label: 'Track' },
+];
 
 export function CustomerLandingClient({
   initialContext,
@@ -12,14 +29,12 @@ export function CustomerLandingClient({
 }: {
   initialContext: TableContext | null;
   initialError?: string;
-}) {
+}): ReactNode {
   const { basePath, qrToken } = useCustomerRoute();
   const [alias, setAlias] = useState('');
   const [context, setContext] = useState<TableContext | null>(initialContext);
   const [joining, setJoining] = useState(false);
-  const [message, setMessage] = useState(initialContext ? 'Choose a name for this table.' : 'Loading table...');
   const [error, setError] = useState(initialError);
-
   const [storedSession, setStoredSession] = useState<GuestSession | null>(null);
 
   useEffect(() => {
@@ -29,18 +44,11 @@ export function CustomerLandingClient({
   }, [qrToken]);
 
   useEffect(() => {
-    if (storedSession && context) {
-      setMessage(`Welcome back, ${storedSession.alias}.`);
-    }
-  }, [context, storedSession]);
-
-  useEffect(() => {
     if (context) {
       return;
     }
     if (!qrToken) {
-      setMessage('This customer URL is missing a QR token.');
-      setError('Open a full table URL like /r/{tenant}/{branch}/t/{qrToken}.');
+      setError('Open a full table link like /r/{tenant}/{branch}/t/{qrToken}.');
       return;
     }
 
@@ -52,14 +60,12 @@ export function CustomerLandingClient({
         if (!active) return;
         window.clearTimeout(timeoutId);
         setContext(nextContext);
-        setMessage(storedSession ? `Welcome back, ${storedSession.alias}.` : 'Choose a name for this table.');
         setError('');
       })
       .catch((nextError: Error) => {
         if (!active) return;
         window.clearTimeout(timeoutId);
         setError(nextError.name === 'AbortError' ? 'Table data timed out. Check the network and try again.' : nextError.message);
-        setMessage('We could not load this table.');
       });
 
     return () => {
@@ -67,12 +73,12 @@ export function CustomerLandingClient({
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [context, qrToken, storedSession]);
+  }, [context, qrToken]);
 
-  async function handleJoin(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+  async function handleJoin(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (!qrToken || !basePath) {
-      setError('This customer URL is missing a QR token.');
+      setError('This table link is missing its QR token.');
       return;
     }
 
@@ -97,72 +103,93 @@ export function CustomerLandingClient({
   }
 
   return (
-    <main className="customer-main customer-main--mobile">
-      <section className="customer-entry-card">
-        <div className="customer-entry-hero">
-          <img
-            alt="Signature grilled dish"
-            src="https://i.pinimg.com/736x/84/81/ab/8481ab5bd88c3c7ea5f087b3a7d99c90.jpg"
-          />
-          <div className="customer-entry-hero__shade" />
-          <div className="customer-entry-hero__content">
-            <span className="customer-table-chip">
-              <span className="material-symbols-outlined filled">table_restaurant</span>
+    <CustomerPage>
+      <Card className="gap-0 overflow-hidden p-0 shadow-card">
+        <div className="relative aspect-[4/3] w-full">
+          <Image alt="" className="object-cover" fill priority sizes="(max-width: 768px) 100vw, 672px" src="/images/guest-hero.svg" />
+          <div className="absolute inset-0 bg-gradient-to-t from-foreground/85 via-foreground/30 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 space-y-2 p-5 text-background">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1 text-xs font-semibold text-primary">
+              <Armchair aria-hidden="true" className="size-3.5" />
               Table {context?.table.tableNo ?? '--'}
             </span>
-            <h1>{context ? context.branch.name : 'Join the table'}</h1>
-            <p>
-              <span className="material-symbols-outlined">location_on</span>
-              {context ? context.branch.slug.replaceAll('-', ' ') : message}
-            </p>
+            <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight">
+              {context ? context.branch.name : 'Join the table'}
+            </h1>
+            {context ? (
+              <p className="inline-flex items-center gap-1.5 text-sm text-background/85">
+                <MapPin aria-hidden="true" className="size-4" />
+                {humanize(context.branch.slug)}
+              </p>
+            ) : null}
           </div>
         </div>
 
-        <div className="customer-entry-flow" aria-label="Ordering steps">
-          <span className="active"><span className="material-symbols-outlined filled">group</span>Join</span>
-          <span><span className="material-symbols-outlined">restaurant_menu</span>Menu</span>
-          <span><span className="material-symbols-outlined">shopping_basket</span>Bucket</span>
-        </div>
+        <CardContent className="space-y-5 p-5">
+          <ol aria-label="How ordering works" className="grid grid-cols-3 gap-2">
+            {steps.map(({ icon: Icon, label }, index) => (
+              <li
+                className={cn(
+                  'flex items-center justify-center gap-1.5 rounded-full border py-2 text-xs font-semibold',
+                  index === 0 ? 'border-primary/30 bg-accent text-accent-foreground' : 'bg-muted/50 text-muted-foreground',
+                )}
+                key={label}
+              >
+                <Icon aria-hidden="true" className="size-4" />
+                {label}
+              </li>
+            ))}
+          </ol>
 
-        {storedSession ? (
-          <div className="customer-resume-panel">
-            <div>
-              <p className="eyebrow">Welcome back</p>
-              <h2>{storedSession.alias}</h2>
-              <p className="muted">Your table session is active.</p>
+          {storedSession ? (
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Welcome back</p>
+                <h2 className="font-display text-2xl font-semibold">{storedSession.alias}</h2>
+                <p className="text-sm text-muted-foreground">Your table session is still active.</p>
+              </div>
+              <div className="grid gap-2">
+                <Button asChild className="h-12" size="lg">
+                  <Link href={`${basePath}/menu`}>
+                    Open menu
+                    <ArrowRight />
+                  </Link>
+                </Button>
+                <Button asChild className="h-12" size="lg" variant="outline">
+                  <Link href={`${basePath}/bucket`}>View bucket</Link>
+                </Button>
+              </div>
             </div>
-            <a className="button-link" href={`${basePath}/menu`}>
-              Open Menu
-              <span className="material-symbols-outlined">arrow_forward</span>
-            </a>
-            <a className="button-secondary" href={`${basePath}/bucket`}>
-              View Bucket
-            </a>
-          </div>
-        ) : (
-          <form className="customer-join-form" onSubmit={(event) => void handleJoin(event)}>
-            <label>
-              Your alias for this visit
-              <input
-                autoComplete="name"
-                maxLength={40}
-                name="alias"
-                onChange={(event) => setAlias(event.target.value)}
-                placeholder="e.g., John"
-                required
-                value={alias}
-              />
-            </label>
-            <button disabled={!context || joining} type="submit">
-              {joining ? 'Joining...' : context ? 'Join Table' : 'Loading table'}
-              <span className="material-symbols-outlined">arrow_forward</span>
-            </button>
-          </form>
-        )}
+          ) : (
+            <form className="space-y-4" onSubmit={(event) => void handleJoin(event)}>
+              <FormField hint="Only used to label your dishes for this table." htmlFor="guest-alias" label="Your name for this visit">
+                <Input
+                  autoComplete="name"
+                  className="h-12"
+                  id="guest-alias"
+                  maxLength={40}
+                  name="alias"
+                  onChange={(event) => setAlias(event.target.value)}
+                  placeholder="e.g. Priya"
+                  required
+                  value={alias}
+                />
+              </FormField>
+              <Button className="h-12 w-full" disabled={!context || joining} size="lg" type="submit">
+                {joining ? <InlineSpinner /> : null}
+                {joining ? 'Joining' : context ? 'Join table' : 'Loading table'}
+                {!joining ? <ArrowRight /> : null}
+              </Button>
+            </form>
+          )}
 
-        {error ? <p className="error-text">{error}</p> : null}
-        {!storedSession ? <p className="muted customer-footnote">Your name only labels items for this table.</p> : null}
-      </section>
-    </main>
+          {error ? (
+            <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+    </CustomerPage>
   );
 }

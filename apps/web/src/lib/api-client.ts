@@ -122,6 +122,8 @@ export interface LiveOrder {
 export interface StaffSession {
   accessToken: string;
   branchId?: string;
+  /** Effective permissions, so the CMS can render nav on the first paint. */
+  permissions?: string[];
   refreshToken: string;
   role: string;
   tenantId: string;
@@ -245,6 +247,9 @@ export interface CmsSubscriptionPlan {
   badge?: string;
   branchLimit?: number;
   code: string;
+  customRoleLimit?: number;
+  features?: string[];
+  menuItemLimit?: number;
   currency?: string;
   description?: string;
   employeeLimit?: number;
@@ -377,6 +382,9 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Machine-readable reason, e.g. PLAN_LIMIT_REACHED. */
+    readonly code?: string,
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
   }
@@ -435,15 +443,44 @@ async function refreshCmsAccessToken(): Promise<string | null> {
   return refreshPromise;
 }
 
+/**
+ * The access token to use right now. When it has been cleared but a refresh
+ * token remains, trades that for a new one instead of treating the user as
+ * signed out. Returns '' only when the session is really gone.
+ */
+export async function ensureCmsAccessToken(): Promise<string> {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  const current = window.localStorage.getItem(cmsTokenKey);
+  if (current) {
+    return current;
+  }
+  return (await refreshCmsAccessToken()) ?? '';
+}
+
+interface ApiErrorPayload {
+  error?: { code?: string; details?: Record<string, unknown>; message?: string };
+  message?: string;
+}
+
 async function readJsonResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json().catch(() => null)) as { message?: string } | T | null;
+  const payload = (await response.json().catch(() => null)) as ApiErrorPayload | T | null;
 
   if (!response.ok) {
-    const message =
-      payload && typeof payload === 'object' && 'message' in payload && payload.message
-        ? payload.message
-        : 'Request failed';
-    throw new ApiError(message, response.status);
+    // The API's exception filter nests the thrown body under `error`, which is
+    // where the structured plan-limit code lives. Reading the code rather than
+    // matching on message text keeps the UI stable when wording changes.
+    const shape = (payload ?? {}) as ApiErrorPayload;
+    const nested = shape.error;
+    const message = nested?.message ?? shape.message ?? 'Request failed';
+
+    throw new ApiError(
+      message,
+      response.status,
+      nested?.code,
+      nested?.details,
+    );
   }
 
   return payload as T;
@@ -914,7 +951,18 @@ export const updateSuperAdminPlanSettings = (
   code: string,
   body: Partial<Pick<
     CmsSubscriptionPlan,
-    'badge' | 'branchLimit' | 'description' | 'employeeLimit' | 'monthlyBillLimit' | 'perks' | 'sortOrder' | 'tableLimit' | 'visible'
+    | 'badge'
+    | 'branchLimit'
+    | 'customRoleLimit'
+    | 'description'
+    | 'employeeLimit'
+    | 'features'
+    | 'menuItemLimit'
+    | 'monthlyBillLimit'
+    | 'perks'
+    | 'sortOrder'
+    | 'tableLimit'
+    | 'visible'
   >>,
   token: string,
 ): Promise<CmsSubscriptionPlan> =>
@@ -948,3 +996,97 @@ export const updateSuperAdminTenantFeatures = (
 
 export const documentId = (value: { _id?: unknown; id?: string }): string =>
   value.id ?? String(value._id ?? '');
+
+// --- Roles, session, and plan entitlements --------------------------------
+
+export interface CmsRole {
+  active: boolean;
+  assignedCount: number;
+  builtIn: boolean;
+  description?: string;
+  id: string;
+  key: string;
+  name: string;
+  permissions: string[];
+}
+
+export interface CmsSessionBranch {
+  branchId: string;
+  name: string;
+  roleKey: string;
+}
+
+export interface CmsEntitlements {
+  features: string[];
+  limits: Record<string, number>;
+  planCode: string;
+  planName: string;
+  source: string;
+  usage: Record<string, number>;
+}
+
+export interface CmsSessionContext {
+  branchId?: string;
+  branches: CmsSessionBranch[];
+  entitlements: CmsEntitlements | null;
+  permissions: string[];
+  role: string;
+  tenantId: string;
+  user: { email: string; id: string; name: string };
+}
+
+export const getCmsSessionContext = (token: string): Promise<CmsSessionContext> =>
+  apiRequest<CmsSessionContext>('/auth/session', { token });
+
+export const switchCmsBranch = (branchId: string, token: string): Promise<StaffSession> =>
+  apiRequest<StaffSession>('/auth/switch-branch', {
+    body: JSON.stringify({ branchId }),
+    method: 'POST',
+    token,
+  });
+
+export const getCmsRoles = (tenantId: string, token: string): Promise<CmsRole[]> =>
+  apiRequest<CmsRole[]>(`/cms/roles?tenantId=${encodeURIComponent(tenantId)}`, { token });
+
+export const createCmsRole = (
+  body: { derivedFrom?: string; description?: string; name: string; permissions: string[]; tenantId: string },
+  token: string,
+): Promise<CmsRole> =>
+  apiRequest<CmsRole>('/cms/roles', { body: JSON.stringify(body), method: 'POST', token });
+
+export const updateCmsRole = (
+  id: string,
+  body: { description?: string; name?: string; permissions?: string[] },
+  token: string,
+): Promise<CmsRole> =>
+  apiRequest<CmsRole>(`/cms/roles/${encodeURIComponent(id)}`, {
+    body: JSON.stringify(body),
+    method: 'PATCH',
+    token,
+  });
+
+export const deleteCmsRole = (id: string, token: string): Promise<{ success: boolean }> =>
+  apiRequest<{ success: boolean }>(`/cms/roles/${encodeURIComponent(id)}`, { method: 'DELETE', token });
+
+export const getCmsEntitlements = (tenantId: string, token: string): Promise<CmsEntitlements> =>
+  apiRequest<CmsEntitlements>(`/cms/entitlements?tenantId=${encodeURIComponent(tenantId)}`, { token });
+
+export const createCmsBranch = (
+  body: { name: string; tenantId: string },
+  token: string,
+): Promise<{ _id?: string; id?: string; name: string }> =>
+  apiRequest('/branches', { body: JSON.stringify(body), method: 'POST', token });
+
+export const archiveCmsBranch = (id: string, token: string): Promise<{ success: boolean }> =>
+  apiRequest<{ success: boolean }>(`/branches/${encodeURIComponent(id)}`, { method: 'DELETE', token });
+
+export const updateSuperAdminTenantEntitlements = (
+  id: string,
+  body: { features?: string[]; overrides: Record<string, number | null> },
+  token: string,
+): Promise<unknown> =>
+  apiRequest(`/super-admin/tenants/${encodeURIComponent(id)}/entitlements`, {
+    body: JSON.stringify(body),
+    method: 'PATCH',
+    token,
+  });

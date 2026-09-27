@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsEmail, IsIn, IsNumber, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsIn, IsNumber, IsObject, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
 import { TENANT_FEATURE_KEYS } from '@restaurent/shared';
 
 export class CreateTenantDto {
@@ -112,7 +112,40 @@ export class UpdatePlanSettingsDto {
   monthlyBillLimit?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  menuItemLimit?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  customRoleLimit?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  features?: string[];
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   perks?: string[];
+}
+
+export class UpdateTenantEntitlementsDto {
+  /**
+   * Per-tenant limit overrides for custom deals. A key set here wins over the
+   * plan; omit a key to inherit.
+   */
+  @IsObject()
+  overrides!: Record<string, number | null>;
+
+  /**
+   * Feature flags for this tenant, overriding the plan's list entirely.
+   * Lets support grant a capability without moving the tenant to another tier.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  features?: string[];
 }

@@ -1,5 +1,11 @@
-import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
-import { UserRole } from '@restaurent/shared';
+import { IsBoolean, IsEmail, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+
+/**
+ * Role keys are validated in the service against the tenant's assignable set
+ * (built-ins plus that tenant's own roles), not by an enum — a tenant-defined
+ * key like `floor-lead` is not a `UserRole` value.
+ */
+const ROLE_KEY = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/;
 
 export class CreateStaffDto {
   @IsString()
@@ -18,8 +24,9 @@ export class CreateStaffDto {
   @MinLength(8)
   password!: string;
 
-  @IsEnum(UserRole)
-  role!: UserRole;
+  @IsString()
+  @Matches(ROLE_KEY, { message: 'role must be a valid role key' })
+  role!: string;
 }
 
 export class UpdateStaffDto {
@@ -28,8 +35,9 @@ export class UpdateStaffDto {
   name?: string;
 
   @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
+  @IsString()
+  @Matches(ROLE_KEY, { message: 'role must be a valid role key' })
+  role?: string;
 
   @IsOptional()
   @IsBoolean()

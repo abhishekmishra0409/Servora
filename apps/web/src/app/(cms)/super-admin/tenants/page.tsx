@@ -1,5 +1,5 @@
-import { SuperAdminConsole } from '../super-admin-console';
+import { TenantsView } from '../_components/tenants-view';
 
-export default function SuperAdminTenantsPage() {
-  return <SuperAdminConsole view="tenants" />;
+export default function Page() {
+  return <TenantsView />;
 }

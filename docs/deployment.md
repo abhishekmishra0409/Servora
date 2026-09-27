@@ -11,9 +11,21 @@
 - Start with `npm run start:api`.
 - Set `MONGODB_URI`, `MONGODB_DB_NAME`, JWT secrets, `WEB_URL`, `CORS_ORIGINS`, Stripe keys, and Cloudinary keys.
 - JWT secrets must be strong and distinct — the API refuses to boot with placeholder values, and requires >= 32 chars in production. Generate with `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`.
-- Indexes are not built on boot in production (`autoIndex` is off). Run `npm run sync-indexes` after each deploy.
+- Indexes are not built on boot in production (`autoIndex` is off). Run `npm run sync-indexes` after each deploy. This release adds the `roles` collection and a `memberships` role index, so the step is not optional.
 - Keep `/api/v1/webhooks/stripe` publicly reachable. Signatures are verified in every environment whenever Stripe is configured, so `STRIPE_WEBHOOK_SECRET` is required.
 - Use `/api/v1/ready` for readiness; it checks MongoDB.
+- Permissions and plan entitlements are cached in process (30s and 60s). With
+  more than one API instance, that is the worst-case staleness after a role or
+  plan change; there is no cross-instance invalidation yet.
+
+## Rollout Notes
+
+- Refresh tokens are re-derived from the database, so any session whose user is
+  inactive or whose membership was deleted is rejected at its next refresh.
+  Expect some currently-valid sessions to be logged out once on deploy.
+- A tenant with no subscription row now resolves to the most restrictive plan
+  instead of unlimited. Audit tenants with `status: active` and no subscription
+  before deploying.
 
 ## Web Deployment
 

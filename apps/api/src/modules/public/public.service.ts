@@ -52,6 +52,10 @@ export class PublicService {
     if (!tenant || !branch || !table) {
       throw new NotFoundException('Table context not found');
     }
+
+    if (branch.status === 'archived') {
+      throw new NotFoundException('This outlet is no longer taking orders');
+    }
     await this.accessService.assertTenantActive(String((tenant as { _id: unknown })._id));
 
     return {

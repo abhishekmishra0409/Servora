@@ -2,20 +2,41 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
-import { UserRole, type StaffJwtPayload, type StaffSession } from '@restaurent/shared';
+import { isPlatformRoleKey, UserRole, type StaffJwtPayload, type StaffSession } from '@restaurent/shared';
 import { isValidObjectId, Model } from 'mongoose';
 
 import { hashValue, matchesHash } from '../../common/utils/hash';
-import { Membership } from '../../database/schemas/membership.schema';
-import { User } from '../../database/schemas/user.schema';
+import { Branch } from '../../database/schemas/branch.schema';
+import { PermissionResolverService } from '../../infrastructure/access/permission-resolver.service';
+import { EntitlementsService } from '../../infrastructure/entitlements/entitlements.service';
+import { Membership, MembershipDocument } from '../../database/schemas/membership.schema';
+import { User, UserDocument } from '../../database/schemas/user.schema';
 import { AuditService } from '../../infrastructure/audit/audit.service';
 import { ChangePasswordDto, LoginDto } from './dto';
+
+const platformRoles: string[] = [UserRole.SuperAdmin, UserRole.PlatformAdmin];
+
+// Used only to break ties when a user holds several memberships and the client
+// did not say which branch it wants. Higher wins.
+const rolePriority: Record<string, number> = {
+  [UserRole.SuperAdmin]: 70,
+  [UserRole.PlatformAdmin]: 60,
+  [UserRole.Owner]: 50,
+  [UserRole.Manager]: 40,
+  [UserRole.Cashier]: 30,
+  [UserRole.Kitchen]: 20,
+  [UserRole.Waiter]: 10,
+  [UserRole.Customer]: 0,
+};
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Membership.name) private readonly membershipModel: Model<Membership>,
+    @InjectModel(Branch.name) private readonly branchModel: Model<Branch>,
+    private readonly permissionResolver: PermissionResolverService,
+    private readonly entitlements: EntitlementsService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly auditService: AuditService,
@@ -37,52 +58,14 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    let membership = await this.membershipModel
-      .findOne({
-        userId: String(user._id),
-        ...(dto.branchId ? { branchId: dto.branchId } : {}),
-      })
-      .exec();
-
-    if (!membership && dto.branchId) {
-      membership = await this.membershipModel
-        .findOne({
-          role: { $in: [UserRole.SuperAdmin, UserRole.PlatformAdmin] },
-          userId: String(user._id),
-        })
-        .exec();
-    }
+    const membership = await this.selectMembership(String(user._id), dto.branchId);
 
     if (!membership) {
       throw new UnauthorizedException('Membership not found');
     }
 
-    const payload: StaffJwtPayload = {
-      email: user.email,
-      role: membership.role,
-      sub: String(user._id),
-      tenantId: membership.tenantId,
-      type: 'staff',
-      ...(membership.branchId ? { branchId: membership.branchId } : {}),
-    };
-    const accessOptions = {
-      expiresIn: this.configService.getOrThrow<string>('auth.accessTtl'),
-      secret: this.configService.getOrThrow<string>('auth.accessSecret'),
-    } as any;
-    const refreshOptions = {
-      expiresIn: this.configService.getOrThrow<string>('auth.refreshTtl'),
-      secret: this.configService.getOrThrow<string>('auth.refreshSecret'),
-    } as any;
-
-    const accessToken = await this.jwtService.signAsync(
-      { ...payload } as Record<string, unknown>,
-      accessOptions,
-    );
-
-    const refreshToken = await this.jwtService.signAsync(
-      { ...payload } as Record<string, unknown>,
-      refreshOptions,
-    );
+    const payload = this.buildPayload(user, membership);
+    const { accessToken, refreshToken } = await this.issueTokens(payload);
 
     user.refreshTokenHash = await hashValue(refreshToken);
     await user.save();
@@ -98,6 +81,9 @@ export class AuthService {
     return {
       accessToken,
       ...(membership.branchId ? { branchId: membership.branchId } : {}),
+      permissions: [
+        ...(await this.permissionResolver.resolveTenantWide(String(user._id), membership.tenantId)),
+      ],
       refreshToken,
       role: membership.role,
       tenantId: membership.tenantId,
@@ -132,37 +118,28 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token mismatch');
     }
 
-    const { exp: _exp, iat: _iat, nbf: _nbf, ...nextPayload } = payload as StaffJwtPayload & {
-      exp?: number;
-      iat?: number;
-      nbf?: number;
-    };
-    const accessOptions = {
-      expiresIn: this.configService.getOrThrow<string>('auth.accessTtl'),
-      secret: this.configService.getOrThrow<string>('auth.accessSecret'),
-    } as any;
-    const refreshOptions = {
-      expiresIn: this.configService.getOrThrow<string>('auth.refreshTtl'),
-      secret: this.configService.getOrThrow<string>('auth.refreshSecret'),
-    } as any;
+    // Re-derive the session from the database rather than re-signing the old
+    // claims. The previous implementation copied the decoded payload forward on
+    // every refresh, so a deactivated account, a deleted membership, or a
+    // changed role kept working indefinitely for as long as the client kept
+    // refreshing.
+    if (!user.active) {
+      throw new UnauthorizedException('Account is disabled');
+    }
 
-    const accessToken = await this.jwtService.signAsync(
-      { ...nextPayload } as Record<string, unknown>,
-      accessOptions,
-    );
+    const membership = await this.selectMembership(String(user._id), payload.branchId);
 
-    const nextRefreshToken = await this.jwtService.signAsync(
-      { ...nextPayload } as Record<string, unknown>,
-      refreshOptions,
-    );
+    if (!membership) {
+      throw new UnauthorizedException('Membership not found');
+    }
 
-    user.refreshTokenHash = await hashValue(nextRefreshToken);
+    const nextPayload = this.buildPayload(user, membership);
+    const tokens = await this.issueTokens(nextPayload);
+
+    user.refreshTokenHash = await hashValue(tokens.refreshToken);
     await user.save();
 
-    return {
-      accessToken,
-      refreshToken: nextRefreshToken,
-    };
+    return tokens;
   }
 
   async logout(userId: string): Promise<{ success: boolean }> {
@@ -212,6 +189,93 @@ export class AuthService {
     return { success: true };
   }
 
+  /**
+   * Everything the CMS needs to render itself for the current user: effective
+   * permissions (which drive the nav and per-button gating), the outlets this
+   * person can work in, and the tenant's plan usage.
+   */
+  async getSessionContext(user: StaffJwtPayload): Promise<unknown> {
+    const [account, memberships, permissions] = await Promise.all([
+      this.getMe(user.sub),
+      this.membershipModel.find({ tenantId: user.tenantId, userId: user.sub }).lean().exec(),
+      this.permissionResolver.resolveTenantWide(user.sub, user.tenantId),
+    ]);
+
+    const branchIds = memberships.map((membership) => membership.branchId).filter(Boolean);
+    // Archived outlets stay out of the switcher even when a membership remains.
+    const branches = await this.branchModel
+      .find({ _id: { $in: branchIds }, status: { $ne: 'archived' } })
+      .select('name slug')
+      .lean()
+      .exec();
+    const branchName = new Map(branches.map((branch) => [String(branch._id), branch.name]));
+
+    // Platform staff have no tenant plan of their own.
+    const entitlements = isPlatformRoleKey(user.role)
+      ? null
+      : await this.entitlements.getEntitlementsWithUsage(user.tenantId);
+
+    return {
+      branches: memberships
+        .filter((membership) => membership.branchId && branchName.has(String(membership.branchId)))
+        .map((membership) => ({
+          branchId: String(membership.branchId),
+          name: branchName.get(String(membership.branchId)) ?? 'Outlet',
+          roleKey: membership.role,
+        })),
+      entitlements,
+      permissions: [...permissions],
+      role: user.role,
+      tenantId: user.tenantId,
+      user: account,
+      ...(user.branchId ? { branchId: user.branchId } : {}),
+    };
+  }
+
+  /**
+   * Re-issues a session for a different outlet. Without this, a user holding
+   * roles at two outlets is stuck in whichever membership login picked.
+   */
+  async switchBranch(user: StaffJwtPayload, branchId: string): Promise<StaffSession> {
+    const membership = await this.membershipModel
+      .findOne({ branchId, tenantId: user.tenantId, userId: user.sub })
+      .exec();
+
+    if (!membership) {
+      throw new UnauthorizedException('You do not have access to that outlet');
+    }
+
+    const branch = await this.branchModel.findById(branchId).select('status').lean().exec();
+
+    if (!branch || branch.status === 'archived') {
+      throw new UnauthorizedException('That outlet has been archived');
+    }
+
+    const account = await this.userModel.findById(user.sub).select('+refreshTokenHash').exec();
+
+    if (!account?.active) {
+      throw new UnauthorizedException('Account is disabled');
+    }
+
+    const payload = this.buildPayload(account, membership);
+    const tokens = await this.issueTokens(payload);
+
+    account.refreshTokenHash = await hashValue(tokens.refreshToken);
+    await account.save();
+
+    return {
+      accessToken: tokens.accessToken,
+      branchId: String(membership.branchId),
+      permissions: [
+        ...(await this.permissionResolver.resolveForBranch(user.sub, user.tenantId, branchId))?.permissions ?? [],
+      ],
+      refreshToken: tokens.refreshToken,
+      role: membership.role,
+      tenantId: membership.tenantId,
+      userId: String(account._id),
+    };
+  }
+
   async getMe(userId: string): Promise<{ email: string; id: string; name: string }> {
     const user = await this.userModel.findById(userId).exec();
 
@@ -224,5 +288,100 @@ export class AuthService {
       id: String(user._id),
       name: user.name,
     };
+  }
+
+  /**
+   * Deterministically pick the membership a session runs as.
+   *
+   * This used to be a bare `findOne` with no sort, so a user holding
+   * memberships in several branches was handed an arbitrary one — and
+   * therefore an arbitrary role. Selection is now: an exact branch match
+   * first, then (for platform staff only) any membership, breaking ties by
+   * role rank and then by age, so the same user always lands on the same
+   * session.
+   */
+  private async selectMembership(
+    userId: string,
+    branchId?: string,
+  ): Promise<MembershipDocument | null> {
+    const allMemberships = await this.membershipModel
+      .find({ userId })
+      .sort({ createdAt: 1, _id: 1 })
+      .exec();
+
+    // A membership at an archived outlet must not open a session there.
+    const memberBranchIds = allMemberships.map((membership) => membership.branchId).filter(Boolean);
+    const archivedBranches = new Set(
+      (
+        await this.branchModel
+          .find({ _id: { $in: memberBranchIds }, status: 'archived' })
+          .select('_id')
+          .lean()
+          .exec()
+      ).map((branch) => String(branch._id)),
+    );
+    const memberships = allMemberships.filter(
+      (membership) => !membership.branchId || !archivedBranches.has(String(membership.branchId)),
+    );
+
+    if (memberships.length === 0) {
+      return null;
+    }
+
+    if (branchId) {
+      const exact = memberships.filter((membership) => String(membership.branchId ?? '') === branchId);
+
+      if (exact.length > 0) {
+        return this.mostPrivileged(exact);
+      }
+
+      // Platform staff are not bound to a branch, so they may assume the branch
+      // they asked for. Everyone else is refused rather than silently falling
+      // back to a different branch's role.
+      const platform = memberships.filter((membership) => platformRoles.includes(membership.role));
+
+      return platform.length > 0 ? this.mostPrivileged(platform) : null;
+    }
+
+    return this.mostPrivileged(memberships);
+  }
+
+  private mostPrivileged(memberships: MembershipDocument[]): MembershipDocument {
+    // `memberships` arrives sorted oldest-first, and reduce keeps the earlier
+    // entry on a tie, so equal-rank memberships resolve to the oldest.
+    return memberships.reduce((best, candidate) =>
+      (rolePriority[candidate.role] ?? 0) > (rolePriority[best.role] ?? 0) ? candidate : best,
+    );
+  }
+
+  private buildPayload(user: UserDocument, membership: MembershipDocument): StaffJwtPayload {
+    return {
+      email: user.email,
+      role: membership.role,
+      sub: String(user._id),
+      tenantId: membership.tenantId,
+      type: 'staff',
+      ...(membership.branchId ? { branchId: membership.branchId } : {}),
+    };
+  }
+
+  private async issueTokens(
+    payload: StaffJwtPayload,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    const accessOptions = {
+      expiresIn: this.configService.getOrThrow<string>('auth.accessTtl'),
+      secret: this.configService.getOrThrow<string>('auth.accessSecret'),
+    } as any;
+    const refreshOptions = {
+      expiresIn: this.configService.getOrThrow<string>('auth.refreshTtl'),
+      secret: this.configService.getOrThrow<string>('auth.refreshSecret'),
+    } as any;
+
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync({ ...payload } as Record<string, unknown>, accessOptions),
+      this.jwtService.signAsync({ ...payload } as Record<string, unknown>, refreshOptions),
+    ]);
+
+    return { accessToken, refreshToken };
   }
 }

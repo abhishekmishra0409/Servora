@@ -10,6 +10,7 @@ import { MenuItem, MenuItemSchema } from './menu-item.schema';
 import { Order, OrderSchema } from './order.schema';
 import { Payment, PaymentSchema } from './payment.schema';
 import { QrCode, QrCodeSchema } from './qr-code.schema';
+import { Role, RoleSchema } from './role.schema';
 import { ServiceRequest, ServiceRequestSchema } from './service-request.schema';
 import { SubscriptionPlan, SubscriptionPlanSchema } from './subscription-plan.schema';
 import { Subscription, SubscriptionSchema } from './subscription.schema';
@@ -32,6 +33,7 @@ export const databaseModels = [
   { name: Payment.name, schema: PaymentSchema },
   { name: QrCode.name, schema: QrCodeSchema },
   { name: RestaurantTable.name, schema: RestaurantTableSchema },
+  { name: Role.name, schema: RoleSchema },
   { name: ServiceRequest.name, schema: ServiceRequestSchema },
   { name: Subscription.name, schema: SubscriptionSchema },
   { name: SubscriptionPlan.name, schema: SubscriptionPlanSchema },
@@ -52,6 +54,7 @@ export * from './menu-item.schema';
 export * from './order.schema';
 export * from './payment.schema';
 export * from './qr-code.schema';
+export * from './role.schema';
 export * from './service-request.schema';
 export * from './subscription-plan.schema';
 export * from './subscription.schema';

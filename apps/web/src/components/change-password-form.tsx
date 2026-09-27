@@ -1,14 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { KeyRound } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
 
-import { changeCmsPassword } from '../lib/api-client';
-import { readCmsSettings } from '../lib/cms-storage';
+import { FormActions, FormField } from '@/components/form-field';
+import { SectionCard } from '@/components/section-card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { changeCmsPassword } from '@/lib/api-client';
+import { errorMessage } from '@/lib/async-state';
+import { readCmsSettings } from '@/lib/cms-storage';
 
-export function ChangePasswordForm({ token: tokenProp = '' }: { token?: string }) {
+export function ChangePasswordForm({ token: tokenProp = '' }: { token?: string }): ReactNode {
   const [busy, setBusy] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
-  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [token, setToken] = useState(tokenProp);
@@ -22,16 +29,17 @@ export function ChangePasswordForm({ token: tokenProp = '' }: { token?: string }
   }, [tokenProp]);
 
   async function submit(): Promise<void> {
+    setError('');
     if (!token) {
-      setMessage('Sign in to change your password.');
+      setError('Sign in to change your password.');
       return;
     }
     if (newPassword.length < 8) {
-      setMessage('New password must be at least 8 characters.');
+      setError('New password must be at least 8 characters.');
       return;
     }
     if (newPassword !== confirmPassword) {
-      setMessage('New password and confirmation do not match.');
+      setError('New password and confirmation do not match.');
       return;
     }
 
@@ -41,55 +49,43 @@ export function ChangePasswordForm({ token: tokenProp = '' }: { token?: string }
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setMessage('Password updated. Use the new password the next time you sign in.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not change password.');
+      toast.success('Password updated. Use it the next time you sign in.');
+    } catch (caught) {
+      setError(errorMessage(caught, 'Could not change password.'));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <article className="panel">
-      <h2>Change password</h2>
-      <p className="muted">Update the password for your current account.</p>
-      {message ? <p className="notice-text">{message}</p> : null}
-      <div className="cms-form-grid">
-        <label>
-          <span>Current password</span>
-          <input
-            autoComplete="current-password"
-            onChange={(event) => setCurrentPassword(event.target.value)}
-            type="password"
-            value={currentPassword}
-          />
-        </label>
-        <label>
-          <span>New password</span>
-          <input
-            autoComplete="new-password"
-            onChange={(event) => setNewPassword(event.target.value)}
-            type="password"
-            value={newPassword}
-          />
-        </label>
-        <label>
-          <span>Confirm new password</span>
-          <input
-            autoComplete="new-password"
-            onChange={(event) => setConfirmPassword(event.target.value)}
-            type="password"
-            value={confirmPassword}
-          />
-        </label>
-        <button
-          disabled={busy || !currentPassword || !newPassword || !confirmPassword}
-          onClick={() => void submit()}
-          type="button"
-        >
+    <SectionCard description="Update the password for your current account." title="Change password">
+      <FormField htmlFor="current-password" label="Current password">
+        <Input
+          autoComplete="current-password"
+          id="current-password"
+          onChange={(event) => setCurrentPassword(event.target.value)}
+          type="password"
+          value={currentPassword}
+        />
+      </FormField>
+      <FormField hint="At least 8 characters." htmlFor="new-password" label="New password">
+        <Input autoComplete="new-password" id="new-password" onChange={(event) => setNewPassword(event.target.value)} type="password" value={newPassword} />
+      </FormField>
+      <FormField error={error || undefined} htmlFor="confirm-password" label="Confirm new password">
+        <Input
+          autoComplete="new-password"
+          id="confirm-password"
+          onChange={(event) => setConfirmPassword(event.target.value)}
+          type="password"
+          value={confirmPassword}
+        />
+      </FormField>
+      <FormActions>
+        <Button disabled={busy || !currentPassword || !newPassword || !confirmPassword} onClick={() => void submit()} type="button">
+          <KeyRound />
           Update password
-        </button>
-      </div>
-    </article>
+        </Button>
+      </FormActions>
+    </SectionCard>
   );
 }
