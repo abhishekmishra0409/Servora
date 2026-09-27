@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 
+import { useOptionalCmsSession } from '@/components/cms-session-provider';
 import { ensureCmsAccessToken } from '@/lib/api-client';
 import { errorMessage } from '@/lib/async-state';
 import { readCmsSettings } from '@/lib/cms-storage';
@@ -74,6 +75,10 @@ export function useCmsResource<T>(
     scope?: ResourceScope;
   },
 ): CmsResource<T> {
+  const session = useOptionalCmsSession();
+  // Switching outlet or tenant must refetch from scratch, not keep the old outlet's rows.
+  const contextKey = `${session?.tenantId ?? ''}|${session?.branchId ?? ''}`;
+  const sessionToken = session?.token ?? '';
   const [data, setData] = useState<T>(initial);
   const [status, setStatus] = useState<ResourceStatus>('loading');
   const [error, setError] = useState('');
@@ -130,7 +135,7 @@ export function useCmsResource<T>(
     setError('');
     void run();
     // `deps` is caller-supplied on purpose: it lists what should restart the load.
-  }, [run, ...deps]);
+  }, [run, contextKey, ...deps]);
 
   const eventsKey = events.join('|');
 
@@ -158,7 +163,7 @@ export function useCmsResource<T>(
       window.clearTimeout(timer);
       socket.disconnect();
     };
-  }, [eventsKey, run]);
+  }, [eventsKey, run, sessionToken]);
 
   useEffect(() => {
     if (!pollMs) return undefined;

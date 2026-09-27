@@ -37,7 +37,7 @@ const SessionContext = createContext<CmsSession | null>(null);
  * localStorage is user-editable.
  */
 export function CmsSessionProvider({ children }: { children: ReactNode }): ReactNode {
-  const [settings] = useState(() => readCmsSettings());
+  const [settings, setSettings] = useState(() => readCmsSettings());
   const [permissions, setPermissions] = useState<ReadonlySet<string>>(() => {
     const stored = readCmsPermissions();
     return stored.length > 0 ? new Set(stored) : fallbackPermissionsForRole(settings.role);
@@ -48,6 +48,17 @@ export function CmsSessionProvider({ children }: { children: ReactNode }): React
 
   const reload = useCallback(async () => {
     const current = readCmsSettings();
+    // An outlet switch re-issues the whole session (branch, tenant, token),
+    // so pick those up first; screens key their data off them.
+    setSettings((previous) =>
+      previous.branchId === current.branchId &&
+      previous.tenantId === current.tenantId &&
+      previous.token === current.token &&
+      previous.role === current.role &&
+      previous.userId === current.userId
+        ? previous
+        : current,
+    );
 
     if (!current.token) {
       return;
@@ -114,6 +125,11 @@ export function CmsSessionProvider({ children }: { children: ReactNode }): React
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+}
+
+/** Session when rendered inside the CMS, `null` elsewhere (e.g. guest pages). */
+export function useOptionalCmsSession(): CmsSession | null {
+  return useContext(SessionContext);
 }
 
 export function useCmsSession(): CmsSession {

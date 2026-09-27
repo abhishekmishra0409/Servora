@@ -114,7 +114,7 @@ export function LoadingCards({
 /** Lanes of ticket placeholders, sized like `KanbanBoard`. */
 export function LoadingKanban({ columns = 4 }: { columns?: number }): ReactNode {
   return (
-    <div aria-busy="true" aria-label="Loading board" className="-mx-4 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0" role="status">
+    <div aria-busy="true" aria-label="Loading board" className="scrollbar-thin -mx-4 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0" role="status">
       <div className="grid auto-cols-[minmax(280px,1fr)] grid-flow-col gap-4">
         {Array.from({ length: columns }, (_, column) => (
           <div className="flex min-h-[320px] flex-col gap-3 rounded-xl border border-t-4 bg-muted/40 p-3" key={column}>

@@ -45,7 +45,7 @@ export function KanbanBoard<Item>({
   renderCard: (item: Item, column: KanbanColumn<Item>) => ReactNode;
 }): ReactNode {
   return (
-    <section className="-mx-4 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0">
+    <section className="scrollbar-thin -mx-4 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0">
       <div
         className="grid auto-cols-[minmax(280px,1fr)] grid-flow-col gap-4"
         style={{ minWidth: `${columns.length * 280 + (columns.length - 1) * 16}px` }}

@@ -32,6 +32,7 @@ function CmsChrome({ children }: { children: ReactNode }): ReactNode {
   const session = useCmsSession();
   const [checkedAuth, setCheckedAuth] = useState(false);
   const [tenantStatus, setTenantStatus] = useState('');
+  const [restaurantName, setRestaurantName] = useState('');
   const [switching, setSwitching] = useState(false);
   const confirm = useConfirm();
   const role = session.role;
@@ -54,6 +55,7 @@ function CmsChrome({ children }: { children: ReactNode }): ReactNode {
         .then((tenants) => {
           const tenant = tenants.find((item) => documentId(item) === settings.tenantId) ?? tenants[0];
           setTenantStatus(tenant?.status ?? '');
+          setRestaurantName(tenant?.legalName ?? '');
         })
         .catch(() => setTenantStatus(''));
     }
@@ -138,6 +140,7 @@ function CmsChrome({ children }: { children: ReactNode }): ReactNode {
       links={links}
       onBranchChange={(branchId) => void changeBranch(branchId)}
       onLogout={() => void logout()}
+      restaurantName={restaurantName}
       role={role}
       switching={switching}
     >

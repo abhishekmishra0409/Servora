@@ -73,7 +73,7 @@ export function MenuItemDrawer({
   return (
     <Drawer onOpenChange={onOpenChange} open={Boolean(item)}>
       <DrawerContent className="mx-auto max-h-[92dvh] md:max-w-lg">
-        <div className="overflow-y-auto">
+        <div className="scrollbar-thin overflow-y-auto">
           {item.imageUrl ? (
             <img alt="" className="h-48 w-full object-cover" src={item.imageUrl} />
           ) : null}

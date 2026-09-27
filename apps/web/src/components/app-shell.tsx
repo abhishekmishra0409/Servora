@@ -27,6 +27,8 @@ export interface AppShellProps {
   links: AppNavLink[];
   onBranchChange: (branchId: string) => void;
   onLogout: () => void;
+  /** Tenant's legal name, shown under the outlet in the switcher. */
+  restaurantName?: string | undefined;
   role: string;
   switching: boolean;
 }
@@ -70,8 +72,9 @@ function SidebarContext({
   canManageOutlets,
   isPlatformRole,
   onBranchChange,
+  restaurantName,
   switching,
-}: Pick<AppShellProps, 'branchId' | 'branches' | 'canManageOutlets' | 'isPlatformRole' | 'onBranchChange' | 'switching'>): ReactNode {
+}: Pick<AppShellProps, 'branchId' | 'branches' | 'canManageOutlets' | 'isPlatformRole' | 'onBranchChange' | 'restaurantName' | 'switching'>): ReactNode {
   if (isPlatformRole) {
     return (
       <Button asChild className="w-full" size="sm">
@@ -89,6 +92,7 @@ function SidebarContext({
       branches={branches}
       canManage={canManageOutlets}
       onChange={onBranchChange}
+      restaurantName={restaurantName}
       switching={switching}
     />
   );
@@ -136,6 +140,7 @@ export function AppShell({
   links,
   onBranchChange,
   onLogout,
+  restaurantName,
   role,
   switching,
 }: AppShellProps): ReactNode {
@@ -154,17 +159,18 @@ export function AppShell({
       canManageOutlets={canManageOutlets}
       isPlatformRole={isPlatformRole}
       onBranchChange={onBranchChange}
+      restaurantName={restaurantName}
       switching={switching}
     />
   );
 
   const sidebarBody = (
     <>
-      <div className="space-y-4 border-b border-sidebar-border px-4 pb-4 pt-5">
-        <BrandLogo className="px-1" href={homeHref} subtitle={subtitle} />
+      <div className="space-y-3 border-b border-sidebar-border px-3 pb-3 pt-5">
+        <BrandLogo className="px-2.5" href={homeHref} subtitle={subtitle} />
         {context}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <SidebarNav links={links} pathname={pathname} />
       </div>
       <AccountRow onLogout={onLogout} role={role} />

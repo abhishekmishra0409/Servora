@@ -144,3 +144,44 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/*
+ * Slim, quiet scrollbars for inner scroll areas (sidebar, menus, boards).
+ * Chromium and Firefox use the standard properties; Safari falls back to the
+ * WebKit pseudo-elements. Both drop the arrow buttons.
+ */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-color: color-mix(in oklab, var(--foreground) 14%, transparent) transparent;
+    scrollbar-width: thin;
+  }
+
+  .scrollbar-thin:hover,
+  .scrollbar-thin:focus-within {
+    scrollbar-color: color-mix(in oklab, var(--foreground) 30%, transparent) transparent;
+  }
+
+  @supports not (scrollbar-width: thin) {
+    .scrollbar-thin::-webkit-scrollbar {
+      height: 6px;
+      width: 6px;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar-thumb {
+      background: color-mix(in oklab, var(--foreground) 14%, transparent);
+      border-radius: 9999px;
+    }
+
+    .scrollbar-thin:hover::-webkit-scrollbar-thumb {
+      background: color-mix(in oklab, var(--foreground) 30%, transparent);
+    }
+
+    .scrollbar-thin::-webkit-scrollbar-button {
+      display: none;
+    }
+  }
+}
