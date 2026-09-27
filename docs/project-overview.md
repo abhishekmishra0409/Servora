@@ -1,10 +1,10 @@
-# Restaurent SaaS Project Overview
+# Servora Project Overview
 
-This document explains the Restaurent project for both non-technical and technical audiences. It is designed as a presentation-ready guide: start from the business idea, understand the user flows, then go deeper into architecture, apps, APIs, data, and local demo usage.
+This document explains the Servora project for both non-technical and technical audiences. It is designed as a presentation-ready guide: start from the business idea, understand the user flows, then go deeper into architecture, apps, APIs, data, and local demo usage.
 
 ## 1. Executive Summary
 
-Restaurent is a multi-tenant restaurant operating platform. It helps restaurants manage dine-in QR ordering, menu operations, waiter workflows, kitchen order progression, billing follow-up, and owner/admin visibility from one connected system.
+Servora is a multi-tenant restaurant operating platform. It helps restaurants manage dine-in QR ordering, menu operations, waiter workflows, kitchen order progression, billing follow-up, and owner/admin visibility from one connected system.
 
 In simple terms:
 
@@ -351,4 +351,4 @@ For technical audiences:
 
 ## 14. One-Minute Pitch
 
-Restaurent is a restaurant operations platform that connects the customer table, waiter floor, kitchen station, and owner dashboard. Customers scan a QR code and order from their table. Waiters confirm orders and handle service requests. Kitchen staff process live tickets. Owners see branch activity and manage menu data. The system is multi-tenant, branch-aware, and built with a NestJS API, MongoDB, in-process Socket.IO realtime, and one unified Next.js frontend.
+Servora is a restaurant operations platform that connects the customer table, waiter floor, kitchen station, and owner dashboard. Customers scan a QR code and order from their table. Waiters confirm orders and handle service requests. Kitchen staff process live tickets. Owners see branch activity and manage menu data. The system is multi-tenant, branch-aware, and built with a NestJS API, MongoDB, in-process Socket.IO realtime, and one unified Next.js frontend.

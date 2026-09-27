@@ -1,16 +1,6 @@
-/*
- * Servora design tokens.
- *
- * Layer order matters: `legacy` sits above Tailwind's preflight but below every
- * component and utility class, so pages that have not been migrated keep their
- * old look while migrated markup always wins. Delete the `legacy` import once
- * the last page has moved to Tailwind.
- */
-@layer theme, base, legacy, components, utilities;
-
+/* Servora design tokens. Colors live on :root so a dark scheme can be added later. */
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "./legacy.css" layer(legacy);
 
 :root {
   --radius: 0.75rem;

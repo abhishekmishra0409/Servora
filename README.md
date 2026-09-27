@@ -1,4 +1,4 @@
-# Restaurent SaaS Starter
+# Servora
 
 This monorepo is a runnable starter for a multi-tenant restaurant operating system with one backend app and one unified frontend app.
 
