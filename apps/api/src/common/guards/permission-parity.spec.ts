@@ -2,8 +2,10 @@ import { Reflector } from '@nestjs/core';
 import {
   BUILTIN_ROLE_PERMISSIONS,
   expandPermissions,
+  IMPLIED_PERMISSIONS,
   isValidPermission,
   PERMISSION_SET,
+  TENANT_ASSIGNABLE_PERMISSIONS,
   UserRole,
 } from '@restaurent/shared';
 
@@ -16,7 +18,9 @@ import { BranchesController } from '../../modules/branches/branches.controller';
 import { FloorsController } from '../../modules/floors/floors.controller';
 import { MediaController } from '../../modules/media/media.controller';
 import { MenuController } from '../../modules/menu/menu.controller';
+import { CmsEntitlementsController } from '../../modules/entitlements/entitlements.controller';
 import { OrdersController } from '../../modules/orders/orders.controller';
+import { RolesController } from '../../modules/roles/roles.controller';
 import { PaymentsController } from '../../modules/payments/payments.controller';
 import { ServiceRequestsController } from '../../modules/service-requests/service-requests.controller';
 import { StaffController } from '../../modules/staff/staff.controller';
@@ -50,11 +54,13 @@ const CONTROLLERS = [
   AuditLogsController,
   BillingController,
   BranchesController,
+  CmsEntitlementsController,
   FloorsController,
   MediaController,
   MenuController,
   OrdersController,
   PaymentsController,
+  RolesController,
   ServiceRequestsController,
   StaffController,
   TablesController,
@@ -95,11 +101,12 @@ const routesFor = (controller: new (...args: never[]) => object): RouteUnderTest
         permissions: requirement?.anyOf ?? [],
         roles,
       };
-    })
-    .filter((route) => route.roles.length > 0);
+    });
 };
 
-const allRoutes = CONTROLLERS.flatMap(routesFor);
+const everyRoute = CONTROLLERS.flatMap(routesFor);
+// The old-tuple parity comparison only makes sense where a tuple exists.
+const allRoutes = everyRoute.filter((route) => route.roles.length > 0);
 
 const permissionsOfRole = (role: string): ReadonlySet<string> =>
   expandPermissions(BUILTIN_ROLE_PERMISSIONS[role] ?? []);
@@ -146,5 +153,65 @@ describe('new permission checks match the old role tuples', () => {
       role,
       allowed: allowedByRole,
     });
+  });
+});
+
+/**
+ * Permissions no API route enforces, on purpose:
+ * - dashboard:view — the locked landing screen; its widgets load under orders:view.
+ * - kitchen:* and menu-schedules:* — alternate views whose grants
+ *   `expandPermissions` maps onto the orders / menu-items permissions the
+ *   routes actually check (see IMPLIED_PERMISSIONS).
+ * - tables:download-qr — QR artwork renders client-side from data already
+ *   guarded by tables:view.
+ * - menu-categories:view — the category list is public menu data
+ *   (GET /menu/categories serves guests); only mutations need a permission.
+ * Add here only with a comment saying why the API has nothing to enforce.
+ */
+const UI_ONLY_PERMISSIONS = new Set([
+  'dashboard:view',
+  'menu-categories:view',
+  'kitchen:status-preparing',
+  'kitchen:status-ready',
+  'kitchen:view',
+  'menu-schedules:edit',
+  'menu-schedules:view',
+  'tables:download-qr',
+]);
+
+describe('permission enforcement coverage', () => {
+  const enforced = new Set(everyRoute.flatMap((route) => route.permissions));
+
+  it('every assignable permission is enforced by a route or documented as UI-only', () => {
+    const unenforced = TENANT_ASSIGNABLE_PERMISSIONS.filter(
+      (permission) => !enforced.has(permission) && !UI_ONLY_PERMISSIONS.has(permission),
+    );
+
+    expect(unenforced).toEqual([]);
+  });
+
+  it('every implied permission points at one a route enforces', () => {
+    for (const [source, implied] of Object.entries(IMPLIED_PERMISSIONS)) {
+      const expanded = expandPermissions([source]);
+
+      for (const permission of implied) {
+        expect({ enforced: enforced.has(permission), permission, source }).toEqual({
+          enforced: true,
+          permission,
+          source,
+        });
+        expect(expanded.has(permission)).toBe(true);
+      }
+    }
+  });
+
+  it('grants a kitchen-only custom role access to the order queue and its transitions', () => {
+    const kitchenOnly = expandPermissions(['kitchen:view', 'kitchen:status-preparing', 'kitchen:status-ready']);
+
+    expect(kitchenOnly.has('orders:view')).toBe(true);
+    expect(kitchenOnly.has('orders:status-preparing')).toBe(true);
+    expect(kitchenOnly.has('orders:status-ready')).toBe(true);
+    expect(kitchenOnly.has('orders:status-served')).toBe(false);
+    expect(kitchenOnly.has('orders:confirm')).toBe(false);
   });
 });

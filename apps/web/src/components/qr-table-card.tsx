@@ -11,6 +11,7 @@ import type { CmsTable } from '@/lib/api-client';
 
 export function QrTableCard({
   canDelete,
+  canDownload,
   canEdit,
   canRegenerate,
   downloading,
@@ -23,6 +24,7 @@ export function QrTableCard({
   url,
 }: {
   canDelete: boolean;
+  canDownload: boolean;
   canEdit: boolean;
   canRegenerate: boolean;
   downloading: boolean;
@@ -65,7 +67,7 @@ export function QrTableCard({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {table.qrToken ? (
+        {canDownload && table.qrToken ? (
           <Button disabled={downloading} onClick={onDownload} size="sm" type="button" variant="outline">
             <Download />
             {downloading ? 'Preparing' : 'Download'}

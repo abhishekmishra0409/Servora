@@ -4,6 +4,7 @@ import { Layers, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { useCmsSession } from '@/components/cms-session-provider';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { FormActions, FormField } from '@/components/form-field';
@@ -17,6 +18,10 @@ import { errorMessage } from '@/lib/async-state';
 import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 export default function FloorsPage() {
+  const { can } = useCmsSession();
+  const canAdd = can('floors:add');
+  const canEdit = can('floors:edit');
+  const canDelete = can('floors:delete');
   const [editingId, setEditingId] = useState('');
   const [form, setForm] = useState({ name: '', sortOrder: '0' });
   const [saving, setSaving] = useState(false);
@@ -77,6 +82,7 @@ export default function FloorsPage() {
       title="Dining areas"
     >
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
+        {canAdd || canEdit ? (
         <SectionCard
           actions={
             editingId ? (
@@ -100,6 +106,7 @@ export default function FloorsPage() {
             </Button>
           </FormActions>
         </SectionCard>
+        ) : null}
 
         <SectionCard title={resource.status === 'loading' ? 'Floors' : `${floors.length} floors`}>
           {resource.status === 'loading' ? (
@@ -117,6 +124,7 @@ export default function FloorsPage() {
                     <p className="text-sm font-semibold">{floor.name}</p>
                     <p className="text-xs text-muted-foreground">Sort order {floor.sortOrder}</p>
                   </div>
+                  {canEdit ? (
                   <Button
                     aria-label={`Edit ${floor.name}`}
                     onClick={() => {
@@ -129,6 +137,8 @@ export default function FloorsPage() {
                   >
                     <Pencil />
                   </Button>
+                  ) : null}
+                  {canDelete ? (
                   <ConfirmDialog
                     confirmLabel="Delete floor"
                     description="Tables on this floor keep their data but lose their floor grouping."
@@ -141,6 +151,7 @@ export default function FloorsPage() {
                       </Button>
                     }
                   />
+                  ) : null}
                 </li>
               ))}
             </ul>

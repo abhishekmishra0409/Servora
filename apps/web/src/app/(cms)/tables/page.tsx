@@ -45,6 +45,7 @@ export default function TablesPage() {
   const canEdit = session.can('tables:edit');
   const canDelete = session.can('tables:delete');
   const canRegenerate = session.can('tables:regenerate-qr');
+  const canDownload = session.can('tables:download-qr');
 
   // Seed the floor picker from whatever floor the existing tables sit on.
   useEffect(() => {
@@ -195,7 +196,7 @@ export default function TablesPage() {
       resource={qr.resource}
       what="tables"
       actions={
-        downloadable > 0 ? (
+        canDownload && downloadable > 0 ? (
           <Button disabled={downloading !== ''} onClick={() => void downloadAll()} type="button" variant="outline">
             <FileText />
             {downloading === 'all' ? 'Preparing PDF' : `Download all ${downloadable} as PDF`}
@@ -295,6 +296,7 @@ export default function TablesPage() {
             return (
               <QrTableCard
                 canDelete={canDelete}
+                canDownload={canDownload}
                 canEdit={canEdit}
                 canRegenerate={canRegenerate}
                 downloading={downloading === tableId || downloading === 'all'}

@@ -91,7 +91,7 @@ export const SCREENS: ScreenDefinition[] = [
     label: 'Orders',
   },
   {
-    actions: ['view', 'edit'],
+    actions: ['view'],
     advanced: [
       { key: 'status-preparing', label: 'Move to preparing' },
       { key: 'status-ready', label: 'Move to ready' },
@@ -163,7 +163,7 @@ export const SCREENS: ScreenDefinition[] = [
     label: 'Categories',
   },
   {
-    actions: ['view', 'add', 'edit', 'delete'],
+    actions: ['view', 'edit'],
     group: 'menu',
     href: '/menu/schedules',
     icon: 'schedule',
@@ -260,6 +260,22 @@ export const LOCKED_PERMISSIONS: string[] = SCREENS.filter((screen) => screen.lo
 export const isValidPermission = (permission: string): boolean => PERMISSION_SET.has(permission);
 
 /**
+ * Screens that are alternate views over another screen's data. Granting the
+ * left side implies the right side, so a role built from the matrix can load
+ * what its screens actually show: the kitchen board reads the live order
+ * queue, and the schedules screen reads and edits menu items. Applied in
+ * `expandPermissions`, which both the API's permission resolver and the CMS
+ * session use, so guards and UI always agree.
+ */
+export const IMPLIED_PERMISSIONS: Record<string, readonly string[]> = {
+  'kitchen:status-preparing': ['orders:status-preparing'],
+  'kitchen:status-ready': ['orders:status-ready'],
+  'kitchen:view': ['orders:view'],
+  'menu-schedules:edit': ['menu-items:edit'],
+  'menu-schedules:view': ['menu-items:view'],
+};
+
+/**
  * Expands a stored permission list, resolving `screen:*` wildcards and
  * re-adding the locked defaults.
  */
@@ -279,6 +295,12 @@ export const expandPermissions = (granted: readonly string[]): Set<string> => {
       for (const permission of permissionsOf(screen)) {
         expanded.add(permission);
       }
+    }
+  }
+
+  for (const entry of [...expanded]) {
+    for (const implied of IMPLIED_PERMISSIONS[entry] ?? []) {
+      expanded.add(implied);
     }
   }
 

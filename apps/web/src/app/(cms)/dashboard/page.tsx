@@ -3,6 +3,7 @@
 import { BellRing, ChefHat, CircleCheckBig, IndianRupee, ReceiptText, Armchair } from 'lucide-react';
 import { useMemo } from 'react';
 
+import { useCmsSession } from '@/components/cms-session-provider';
 import { EmptyState } from '@/components/empty-state';
 import { LoadingRows } from '@/components/loading-state';
 import { PageShell } from '@/components/page-shell';
@@ -27,11 +28,17 @@ function upsertOrder(currentOrders: LiveOrder[], order: LiveOrder): LiveOrder[] 
 }
 
 export default function DashboardPage() {
-  const resource = useCmsResource<LiveOrder[]>(({ branchId, token }) => getLiveOrders(branchId, token), {
+  const { can } = useCmsSession();
+  const canViewOrders = can('orders:view');
+  const resource = useCmsResource<LiveOrder[]>(
+    ({ branchId, token }) => (canViewOrders ? getLiveOrders(branchId, token) : Promise.resolve([])),
+    {
+    deps: [canViewOrders],
     events: ['order.created', 'order.status_updated'],
     initial: [],
     // Patch the one order that changed instead of refetching the whole queue.
     onEvent: (_event, payload) => {
+      if (!canViewOrders) return true;
       const orderId = (payload as { orderId?: string } | undefined)?.orderId;
       if (!orderId) return false;
       void getOrderById(orderId, readCmsContext().token)
@@ -43,7 +50,8 @@ export default function DashboardPage() {
         .catch(() => void resource.reload());
       return true;
     },
-  });
+  },
+  );
   const orders = resource.data;
   const isLoading = resource.status === 'loading';
 
@@ -65,6 +73,14 @@ export default function DashboardPage() {
       title="Live dashboard"
       what="the order queue"
     >
+      {!canViewOrders ? (
+        <EmptyState
+          description="Your role does not include viewing live orders, so there is nothing to show here. Use the sidebar for the areas assigned to you."
+          icon={ReceiptText}
+          title="No live-order access"
+        />
+      ) : (
+        <>
       <StatGrid>
         <StatCard loading={isLoading} icon={BellRing} label="Pending confirmation" tone="warning" value={kpis.pending} />
         <StatCard loading={isLoading} icon={ChefHat} label="Kitchen queue" tone="info" value={kpis.kitchen} />
@@ -143,6 +159,8 @@ export default function DashboardPage() {
           )}
         </SectionCard>
       </section>
+        </>
+      )}
     </PageShell>
   );
 }

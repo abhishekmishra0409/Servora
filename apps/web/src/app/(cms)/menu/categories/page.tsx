@@ -4,6 +4,7 @@ import { Pencil, Plus, Tags, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { useCmsSession } from '@/components/cms-session-provider';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { DataTable } from '@/components/data-table';
 import { EmptyState } from '@/components/empty-state';
@@ -25,6 +26,10 @@ import { errorMessage } from '@/lib/async-state';
 import { readCmsContext, useCmsResource } from '@/lib/use-cms-resource';
 
 export default function MenuCategoriesPage() {
+  const { can } = useCmsSession();
+  const canAdd = can('menu-categories:add');
+  const canEdit = can('menu-categories:edit');
+  const canDelete = can('menu-categories:delete');
   const [editingId, setEditingId] = useState('');
   const [form, setForm] = useState({ name: '', sortOrder: '0' });
   const [saving, setSaving] = useState(false);
@@ -88,6 +93,7 @@ export default function MenuCategoriesPage() {
       title="Categories"
     >
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
+        {canAdd || canEdit ? (
         <SectionCard
           actions={
             editingId ? (
@@ -117,6 +123,7 @@ export default function MenuCategoriesPage() {
             </Button>
           </FormActions>
         </SectionCard>
+        ) : null}
 
         <SectionCard contentClassName="space-y-0" title={resource.status === 'loading' ? 'Categories' : `${categories.length} categories`}>
           <DataTable
@@ -139,9 +146,12 @@ export default function MenuCategoriesPage() {
                 key: 'actions',
                 render: (category) => (
                   <div className="flex justify-end gap-1">
+                    {canEdit ? (
                     <Button aria-label={`Edit ${category.name}`} onClick={() => edit(category)} size="icon-sm" type="button" variant="ghost">
                       <Pencil />
                     </Button>
+                    ) : null}
+                    {canDelete ? (
                     <ConfirmDialog
                       confirmLabel="Delete category"
                       description="Dishes in this category will be hidden from guests until they are moved."
@@ -154,6 +164,7 @@ export default function MenuCategoriesPage() {
                         </Button>
                       }
                     />
+                    ) : null}
                   </div>
                 ),
               },
