@@ -1,34 +1,44 @@
 'use client';
 
+import { BellRing, ChartLine, IndianRupee, ReceiptText, ShoppingBasket } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { PageShell } from '../../../components/page-shell';
-import { getCmsAnalyticsMenu, getCmsAnalyticsOverview, type CmsAnalyticsOverview } from '../../../lib/api-client';
-import { readCmsSettings } from '../../../lib/cms-storage';
-import { createSocketClient } from '../../../lib/socket';
-
-const money = (value: number): string =>
-  new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
+import { DataTable } from '@/components/data-table';
+import { EmptyState } from '@/components/empty-state';
+import { ErrorState } from '@/components/error-state';
+import { PageShell } from '@/components/page-shell';
+import { SectionCard } from '@/components/section-card';
+import { StatCard, StatGrid } from '@/components/stat-card';
+import { StatusBadge } from '@/components/status-badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { getCmsAnalyticsMenu, getCmsAnalyticsOverview, type CmsAnalyticsOverview } from '@/lib/api-client';
+import { failed, loading, ready, type AsyncState } from '@/lib/async-state';
+import { readCmsSettings } from '@/lib/cms-storage';
+import { money } from '@/lib/format';
+import { createSocketClient } from '@/lib/socket';
 
 export default function AnalyticsPage() {
   const [overview, setOverview] = useState<CmsAnalyticsOverview | null>(null);
   const [items, setItems] = useState<{ available: boolean; name: string; price: number }[]>([]);
-  const [message, setMessage] = useState('Sign in to load analytics from the database.');
+  const [state, setState] = useState<AsyncState>(loading);
 
   useEffect(() => {
     const settings = readCmsSettings();
-    if (!settings.branchId || !settings.token) return;
+    if (!settings.branchId || !settings.token) {
+      setState(failed(new Error('This account is not linked to an outlet yet.')));
+      return;
+    }
     const load = (): void => {
       void Promise.all([
-      getCmsAnalyticsOverview(settings.branchId, settings.token),
-      getCmsAnalyticsMenu(settings.branchId, settings.token),
-    ])
-      .then(([nextOverview, menu]) => {
-        setOverview(nextOverview);
-        setItems(menu.items);
-        setMessage('');
-      })
-      .catch((error: unknown) => setMessage(error instanceof Error ? error.message : 'Could not load analytics.'));
+        getCmsAnalyticsOverview(settings.branchId, settings.token),
+        getCmsAnalyticsMenu(settings.branchId, settings.token),
+      ])
+        .then(([nextOverview, menu]) => {
+          setOverview(nextOverview);
+          setItems(menu.items);
+          setState(ready);
+        })
+        .catch((error: unknown) => setState(failed(error, 'Could not load analytics.')));
     };
     load();
     const socket = createSocketClient(settings.token);
@@ -40,33 +50,46 @@ export default function AnalyticsPage() {
     };
   }, []);
 
-  const metrics = overview
-    ? [
-        { label: 'Gross sales', value: money(overview.todayRevenue) },
-        { label: 'Average basket', value: money(overview.avgBasket) },
-        { label: 'Live orders', value: String(overview.liveOrders) },
-        { label: 'Open requests', value: String(overview.serviceRequestsOpen) },
-      ]
-    : [];
-
   return (
-    <PageShell eyebrow="Analytics" title="Operational reporting before warehouse complexity" description="Review conversion, basket size, table turnover, service timing, and menu mix from one branch-aware screen.">
-      {message ? <p className="notice-text">{message}</p> : null}
-      <section className="card-grid">
-        {metrics.map((metric) => (
-          <article className="card kpi cms-kpi" key={metric.label}><strong>{metric.value}</strong><span className="muted">{metric.label}</span></article>
-        ))}
-      </section>
-      <section className="panel">
-        <div className="cms-section-head"><h2>Menu mix</h2></div>
-        <div className="cms-data-table">
-          {items.map((item) => (
-            <div className="cms-data-row" key={item.name}>
-              <strong>{item.name}</strong><span>{money(item.price)}</span><span>{item.available ? 'Available' : 'Hidden'}</span><span className="cms-status">{item.available ? 'Live' : 'Off'}</span>
-            </div>
+    <PageShell
+      description="Sales, basket size, live activity, and menu mix for this outlet. Figures update as orders move."
+      eyebrow="Analytics"
+      title="Analytics"
+    >
+      {state.status === 'error' ? <ErrorState message={state.error ?? ''} /> : null}
+
+      {state.status === 'loading' ? (
+        <StatGrid>
+          {[0, 1, 2, 3].map((index) => (
+            <Skeleton className="h-28 rounded-xl" key={index} />
           ))}
-        </div>
-      </section>
+        </StatGrid>
+      ) : overview ? (
+        <StatGrid>
+          <StatCard icon={IndianRupee} label="Gross sales today" tone="primary" value={money(overview.todayRevenue)} />
+          <StatCard icon={ShoppingBasket} label="Average basket" tone="info" value={money(overview.avgBasket)} />
+          <StatCard icon={ReceiptText} label="Live orders" tone="success" value={overview.liveOrders} />
+          <StatCard icon={BellRing} label="Open requests" tone="warning" value={overview.serviceRequestsOpen} />
+        </StatGrid>
+      ) : null}
+
+      <SectionCard contentClassName="space-y-0" description="Every dish on the menu with its current price and visibility." title="Menu mix">
+        <DataTable
+          columns={[
+            { header: 'Dish', key: 'name', render: (item) => <span className="font-semibold">{item.name}</span> },
+            { header: 'Price', key: 'price', render: (item) => <span className="tabular-nums">{money(item.price)}</span> },
+            {
+              header: 'Status',
+              key: 'status',
+              render: (item) => <StatusBadge kind="menu" label={item.available ? 'Live' : 'Off'} value={item.available ? 'available' : 'hidden'} />,
+            },
+          ]}
+          empty={<EmptyState compact icon={ChartLine} title="No menu data yet" />}
+          loading={state.status === 'loading'}
+          rowKey={(item) => item.name}
+          rows={items}
+        />
+      </SectionCard>
     </PageShell>
   );
 }

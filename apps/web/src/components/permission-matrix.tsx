@@ -1,8 +1,11 @@
-"use client";
+'use client';
 
-import { useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import { permissionKey, SCREEN_GROUPS, type ScreenAction } from '@restaurent/shared';
 
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   ACTION_LABELS,
   SCREEN_ACTIONS,
@@ -12,7 +15,8 @@ import {
   screensInGroup,
   toggleColumn,
   toggleRow,
-} from '../lib/permission-matrix';
+} from '@/lib/permission-matrix';
+import { cn } from '@/lib/utils';
 
 interface PermissionMatrixProps {
   granted: ReadonlySet<string>;
@@ -22,24 +26,19 @@ interface PermissionMatrixProps {
   readOnly?: boolean;
 }
 
+const rowGrid = 'md:grid md:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(64px,88px))] md:items-center md:gap-2';
+
 /**
- * The screen-by-action grid.
- *
- * On desktop the four action cells are grid children of the row (via
- * `display: contents`); below 760px the same DOM reflows into labelled chips,
- * because a bare checkbox in a nameless column is unusable on a phone.
+ * The screen-by-action grid. On desktop each row is a grid with one cell per
+ * action; below `md` the same cells reflow into labelled chips, because a bare
+ * checkbox in a nameless column is unusable on a phone.
  */
-export function PermissionMatrix({
-  granted,
-  locked,
-  onChange,
-  readOnly = false,
-}: PermissionMatrixProps): React.ReactElement {
+export function PermissionMatrix({ granted, locked, onChange, readOnly = false }: PermissionMatrixProps): ReactNode {
   const [openAdvanced, setOpenAdvanced] = useState('');
   const isLocked = (key: string): boolean => Boolean(locked?.has(key));
 
   return (
-    <div className="perm-matrix">
+    <div className="overflow-hidden rounded-xl border">
       {SCREEN_GROUPS.map((group) => {
         const screens = screensInGroup(group.key);
 
@@ -49,114 +48,109 @@ export function PermissionMatrix({
 
         return (
           <section key={group.key}>
-            <div className="perm-matrix__group-head">
-              <h3>{group.label}</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted px-4 py-2.5">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.08em]">{group.label}</h3>
               {readOnly ? null : (
-                <div className="perm-matrix__group-actions">
+                <div className="flex flex-wrap gap-1">
                   {SCREEN_ACTIONS.map((action) => (
-                    <button
-                      className="button-quiet"
+                    <Button
+                      className="h-7 px-2 text-xs"
                       key={action}
                       onClick={() => onChange?.(toggleColumn(granted, group.key, action, true))}
+                      size="sm"
                       type="button"
+                      variant="ghost"
                     >
                       All {ACTION_LABELS[action]}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}
             </div>
 
-            <div aria-hidden="true" className="perm-matrix__head">
+            <div aria-hidden="true" className={cn('hidden border-b bg-card px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground', rowGrid)}>
               <span>Screen</span>
               {SCREEN_ACTIONS.map((action) => (
-                <span key={action}>{ACTION_LABELS[action]}</span>
+                <span className="text-center" key={action}>
+                  {ACTION_LABELS[action]}
+                </span>
               ))}
             </div>
 
             {screens.map((screen) => {
               const row = rowState(granted, screen);
               const advancedCount = countAdvanced(granted, screen);
+              const advancedOpen = openAdvanced === screen.key;
 
               return (
-                <div className="perm-row" key={screen.key}>
-                  <div className="perm-row__screen">
-                    <label className="checkbox-row">
-                      <input
-                        checked={row.all}
-                        disabled={readOnly || screen.locked}
-                        onChange={(event) => onChange?.(toggleRow(granted, screen, event.target.checked))}
-                        ref={(node) => {
-                          if (node) {
-                            node.indeterminate = row.partial;
-                          }
-                        }}
-                        type="checkbox"
-                      />
-                      <span>{screen.label}</span>
-                    </label>
-                    <small className="muted">{screen.locked ? 'Always visible' : screen.href}</small>
-                  </div>
+                <div className="border-b bg-card px-4 py-3 last:border-b-0" key={screen.key}>
+                  <div className={cn('grid gap-3', rowGrid)}>
+                    <div className="grid gap-0.5">
+                      <label className="flex items-center gap-2 text-sm font-medium">
+                        <Checkbox
+                          checked={row.all ? true : row.partial ? 'indeterminate' : false}
+                          disabled={readOnly || screen.locked}
+                          onCheckedChange={(checked) => onChange?.(toggleRow(granted, screen, checked === true))}
+                        />
+                        {screen.label}
+                      </label>
+                      <span className="pl-6 text-xs text-muted-foreground">{screen.locked ? 'Always visible' : screen.href}</span>
+                    </div>
 
-                  <div className="perm-row__actions">
-                    {SCREEN_ACTIONS.map((action: ScreenAction) => {
-                      if (!screen.actions.includes(action)) {
+                    <div className="flex flex-wrap gap-2 pl-6 md:contents md:pl-0">
+                      {SCREEN_ACTIONS.map((action: ScreenAction) => {
+                        if (!screen.actions.includes(action)) {
+                          return (
+                            <span aria-hidden="true" className="hidden text-center text-muted-foreground/50 md:block" key={action}>
+                              —
+                            </span>
+                          );
+                        }
+
+                        const key = permissionKey(screen.key, action);
+
                         return (
-                          <span aria-hidden="true" className="perm-cell perm-cell--na" key={action}>
-                            &mdash;
-                          </span>
+                          <label
+                            className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium md:justify-center md:rounded-none md:border-0 md:px-0 md:py-0"
+                            key={action}
+                          >
+                            <Checkbox
+                              aria-label={`${screen.label}: ${ACTION_LABELS[action]}`}
+                              checked={granted.has(key)}
+                              disabled={readOnly || isLocked(key) || (screen.locked && action === 'view')}
+                              onCheckedChange={(checked) => onChange?.(applyToggle(granted, screen, action, checked === true))}
+                            />
+                            <span className="md:sr-only">{ACTION_LABELS[action]}</span>
+                          </label>
                         );
-                      }
-
-                      const key = permissionKey(screen.key, action);
-
-                      return (
-                        <label className="perm-cell" key={action}>
-                          <input
-                            aria-label={`${screen.label}: ${ACTION_LABELS[action]}`}
-                            checked={granted.has(key)}
-                            disabled={
-                              readOnly || isLocked(key) || (screen.locked && action === 'view')
-                            }
-                            onChange={(event) =>
-                              onChange?.(applyToggle(granted, screen, action, event.target.checked))
-                            }
-                            type="checkbox"
-                          />
-                          <span className="perm-cell__label">{ACTION_LABELS[action]}</span>
-                        </label>
-                      );
-                    })}
+                      })}
+                    </div>
                   </div>
 
                   {screen.advanced?.length ? (
-                    <div className="perm-row__advanced">
-                      <button
-                        className="button-quiet"
-                        onClick={() => setOpenAdvanced(openAdvanced === screen.key ? '' : screen.key)}
+                    <div className="mt-2 pl-6">
+                      <Button
+                        aria-expanded={advancedOpen}
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setOpenAdvanced(advancedOpen ? '' : screen.key)}
+                        size="sm"
                         type="button"
+                        variant="ghost"
                       >
-                        <span aria-hidden="true" className="material-symbols-outlined">
-                          {openAdvanced === screen.key ? 'expand_less' : 'expand_more'}
-                        </span>
+                        {advancedOpen ? <ChevronUp /> : <ChevronDown />}
                         Advanced ({advancedCount}/{screen.advanced.length})
-                      </button>
-                      {openAdvanced === screen.key ? (
-                        <div className="cms-permission-grid perm-advanced">
+                      </Button>
+                      {advancedOpen ? (
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                           {screen.advanced.map((advanced) => {
                             const key = permissionKey(screen.key, advanced.key);
 
                             return (
-                              <label className="checkbox-row" key={advanced.key}>
-                                <input
+                              <label className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm" key={advanced.key}>
+                                <Checkbox
                                   checked={granted.has(key)}
                                   disabled={readOnly || isLocked(key)}
-                                  onChange={(event) =>
-                                    onChange?.(
-                                      applyToggle(granted, screen, advanced.key, event.target.checked),
-                                    )
-                                  }
-                                  type="checkbox"
+                                  onCheckedChange={(checked) => onChange?.(applyToggle(granted, screen, advanced.key, checked === true))}
                                 />
                                 {advanced.label}
                               </label>

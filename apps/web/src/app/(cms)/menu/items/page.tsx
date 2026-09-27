@@ -1,8 +1,25 @@
 'use client';
 
-import type { ChangeEvent, DragEvent } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Eye, EyeOff, Pencil, Plus, Save, Search, Trash2, UtensilsCrossed } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
+import { EmptyState } from '@/components/empty-state';
+import { ErrorState } from '@/components/error-state';
+import { FormActions, FormField, FormGrid } from '@/components/form-field';
+import { ImageDropzone } from '@/components/image-dropzone';
+import { LoadingCards } from '@/components/loading-state';
+import { PageHeader } from '@/components/page-header';
+import { PageShell } from '@/components/page-shell';
+import { SectionCard } from '@/components/section-card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import {
   createCmsMenuItem,
   deleteCmsMenuItem,
@@ -13,43 +30,44 @@ import {
   updateCmsMenuItem,
   type CmsMenuCategory,
   type CmsMenuItem,
-} from '../../../../lib/api-client';
-import { readCmsSettings } from '../../../../lib/cms-storage';
+} from '@/lib/api-client';
+import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
+import { readCmsSettings } from '@/lib/cms-storage';
+import { money } from '@/lib/format';
 
 const maxImageBytes = 5 * 1024 * 1024;
-const money = (value: number): string =>
-  new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
 const slugify = (value: string): string =>
   value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
+const emptyForm = {
+  available: true,
+  categoryId: '',
+  description: '',
+  dietaryFlags: '',
+  imageUrl: '',
+  name: '',
+  price: '0',
+};
+
 export default function MenuItemsPage() {
-  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [branchId, setBranchId] = useState('');
   const [tenantId, setTenantId] = useState('');
   const [token, setToken] = useState('');
   const [items, setItems] = useState<CmsMenuItem[]>([]);
   const [categories, setCategories] = useState<CmsMenuCategory[]>([]);
   const [editingId, setEditingId] = useState('');
-  const [form, setForm] = useState({
-    available: true,
-    categoryId: '',
-    description: '',
-    dietaryFlags: '',
-    imageUrl: '',
-    name: '',
-    price: '0',
-  });
-  const [imageDragActive, setImageDragActive] = useState(false);
+  const [form, setForm] = useState(emptyForm);
   const [imageFileName, setImageFileName] = useState('');
   const [imageUploadNote, setImageUploadNote] = useState('');
   const [query, setQuery] = useState('');
-  const [message, setMessage] = useState('Sign in to load menu items from the database.');
+  const [state, setState] = useState<AsyncState>(loading);
+  const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   async function load(nextBranchId = branchId, nextTenantId = tenantId, nextToken = token): Promise<void> {
     if (!nextBranchId || !nextTenantId || !nextToken) {
       setItems([]);
-      setMessage('Sign in to manage menu items.');
+      setState(failed(new Error('This account is not linked to an outlet yet.')));
       return;
     }
     try {
@@ -60,9 +78,9 @@ export default function MenuItemsPage() {
       setItems(nextItems);
       setCategories(nextCategories);
       setForm((current) => ({ ...current, categoryId: current.categoryId || documentId(nextCategories[0] ?? {}) }));
-      setMessage('');
+      setState(ready);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not load menu management data.');
+      setState(failed(error, 'Could not load menu management data.'));
     }
   }
 
@@ -87,25 +105,15 @@ export default function MenuItemsPage() {
 
   function resetForm(): void {
     setEditingId('');
-    setImageDragActive(false);
     setImageFileName('');
     setImageUploadNote('');
-    setForm({
-      available: true,
-      categoryId: documentId(categories[0] ?? {}),
-      description: '',
-      dietaryFlags: '',
-      imageUrl: '',
-      name: '',
-      price: '0',
-    });
+    setForm({ ...emptyForm, categoryId: documentId(categories[0] ?? {}) });
   }
 
   function edit(item: CmsMenuItem): void {
     const media = item.media as { url?: string } | undefined;
     const imageUrl = media?.url ?? '';
     setEditingId(documentId(item));
-    setImageDragActive(false);
     setImageFileName(imageUrl ? 'Current menu image' : '');
     setImageUploadNote('');
     setForm({
@@ -117,11 +125,16 @@ export default function MenuItemsPage() {
       name: item.name,
       price: String(item.price),
     });
+    window.scrollTo({ behavior: 'smooth', top: 0 });
   }
 
   async function submit(): Promise<void> {
     if (!tenantId || !branchId || !token || !form.categoryId) {
-      setMessage('Missing tenant, branch, token, or category.');
+      toast.error('Pick a category before saving.');
+      return;
+    }
+    if (!form.name.trim()) {
+      toast.error('Give the dish a name.');
       return;
     }
 
@@ -139,6 +152,7 @@ export default function MenuItemsPage() {
       tenantId,
     };
 
+    setSaving(true);
     try {
       const wasEditing = Boolean(editingId);
       if (editingId) {
@@ -148,9 +162,11 @@ export default function MenuItemsPage() {
       }
       resetForm();
       await load();
-      setMessage(wasEditing ? 'Menu item updated.' : 'Menu item created.');
+      toast.success(wasEditing ? 'Menu item updated' : 'Menu item created');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not save menu item.');
+      toast.error(errorMessage(error, 'Could not save menu item.'));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -158,8 +174,10 @@ export default function MenuItemsPage() {
     try {
       await deleteCmsMenuItem(documentId(item), token);
       await load();
+      toast.success(`${item.name} deleted`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not delete menu item.');
+      toast.error(errorMessage(error, 'Could not delete menu item.'));
+      throw error;
     }
   }
 
@@ -167,11 +185,9 @@ export default function MenuItemsPage() {
     if (!file.type.startsWith('image/')) {
       return 'Choose a JPG, PNG, WebP, or GIF image.';
     }
-
     if (file.size > maxImageBytes) {
       return 'Image must be 5 MB or smaller.';
     }
-
     return '';
   }
 
@@ -190,8 +206,7 @@ export default function MenuItemsPage() {
 
     setUploading(true);
     setImageFileName(file.name);
-    setImageUploadNote('Uploading image...');
-    setMessage('');
+    setImageUploadNote('Uploading image');
     try {
       const signature = await signMediaUpload(token, 'restaurent/menu');
       if (!signature.cloudName || !signature.apiKey || !signature.signature) {
@@ -209,7 +224,9 @@ export default function MenuItemsPage() {
         body,
         method: 'POST',
       });
-      const payload = (await response.json().catch(() => null)) as { secure_url?: string; url?: string; error?: { message?: string } } | null;
+      const payload = (await response.json().catch(() => null)) as
+        | { secure_url?: string; url?: string; error?: { message?: string } }
+        | null;
       if (!response.ok) {
         throw new Error(payload?.error?.message ?? 'Cloudinary upload failed.');
       }
@@ -221,41 +238,10 @@ export default function MenuItemsPage() {
       setForm((current) => ({ ...current, imageUrl }));
       setImageUploadNote('Image ready. Save the menu item to apply it.');
     } catch (error) {
-      setImageUploadNote(error instanceof Error ? error.message : 'Could not upload image.');
+      setImageUploadNote(errorMessage(error, 'Could not upload image.'));
     } finally {
       setUploading(false);
     }
-  }
-
-  function handleImageInputChange(event: ChangeEvent<HTMLInputElement>): void {
-    void uploadImage(event.target.files?.[0] ?? null);
-    event.target.value = '';
-  }
-
-  function handleImageDragEnter(event: DragEvent<HTMLLabelElement>): void {
-    event.preventDefault();
-    setImageDragActive(true);
-  }
-
-  function handleImageDragOver(event: DragEvent<HTMLLabelElement>): void {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'copy';
-    setImageDragActive(true);
-  }
-
-  function handleImageDragLeave(event: DragEvent<HTMLLabelElement>): void {
-    event.preventDefault();
-    const nextTarget = event.relatedTarget as Node | null;
-    if (nextTarget && event.currentTarget.contains(nextTarget)) {
-      return;
-    }
-    setImageDragActive(false);
-  }
-
-  function handleImageDrop(event: DragEvent<HTMLLabelElement>): void {
-    event.preventDefault();
-    setImageDragActive(false);
-    void uploadImage(event.dataTransfer.files?.[0] ?? null);
   }
 
   function clearImage(): void {
@@ -264,155 +250,187 @@ export default function MenuItemsPage() {
     setImageUploadNote('Image removed. Save the item to apply it.');
   }
 
-  const imageDropzoneClass = [
-    'menu-image-dropzone',
-    imageDragActive ? 'is-dragging' : '',
-    form.imageUrl ? 'has-image' : '',
-  ].filter(Boolean).join(' ');
-  const imageStatus = uploading ? 'Uploading image...' : imageUploadNote;
-
   return (
-    <main>
-      <div className="page-shell">
-        <section className="customer-header">
-          <div>
-            <p className="eyebrow">Menu Items</p>
-            <h1>Menu operations</h1>
-            <p className="muted">Owner controls for dishes, prices, images, schedules, and availability.</p>
-          </div>
-          <button onClick={() => void load()} type="button">
-            <span aria-hidden="true" className="material-symbols-outlined">refresh</span>
-            Refresh
-          </button>
-        </section>
+    <PageShell>
+      <PageHeader
+        description="Dishes, prices, images, dietary tags, and availability for this outlet."
+        eyebrow="Menu"
+        onRefresh={() => void load()}
+        refreshing={state.status === 'loading'}
+        title="Menu items"
+      />
 
-        {message ? <p className="notice-text">{message}</p> : null}
+      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
 
-        <section className="cms-settings-grid menu-editor-grid">
-          <article className="panel menu-editor-panel">
-            <div className="cms-section-head">
-              <h2>{editingId ? 'Update item' : 'Add item'}</h2>
-              {editingId ? <button className="button-secondary" onClick={resetForm} type="button">Cancel</button> : null}
-            </div>
-            <div className="form-stack menu-item-form">
-              <div className="menu-item-form__grid">
-                <label>Name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
-                <label>Category
-                  <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}>
-                    {categories.map((category) => <option key={documentId(category)} value={documentId(category)}>{category.name}</option>)}
-                  </select>
-                </label>
-                <label>Price<input min="0" step="0.01" type="number" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /></label>
-                <label>Dietary tags<input value={form.dietaryFlags} onChange={(event) => setForm({ ...form, dietaryFlags: event.target.value })} placeholder="chef_favorite, vegetarian" /></label>
-              </div>
-              <label>Description<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
-              <label className="checkbox-row"><input checked={form.available} onChange={(event) => setForm({ ...form, available: event.target.checked })} type="checkbox" /> Available</label>
-              <button disabled={uploading} onClick={() => void submit()} type="button">
-                <span aria-hidden="true" className="material-symbols-outlined">{editingId ? 'save' : 'add_circle'}</span>
-                {editingId ? 'Update item' : 'Create item'}
-              </button>
-            </div>
-          </article>
-
-          <article className="panel menu-image-panel">
-            <div className="cms-section-head">
-              <h2>Dish photo</h2>
-              {form.imageUrl ? <span className="cms-status">Ready</span> : <span className="cms-status">Optional</span>}
-            </div>
-            <label
-              className={imageDropzoneClass}
-              onDragEnter={handleImageDragEnter}
-              onDragLeave={handleImageDragLeave}
-              onDragOver={handleImageDragOver}
-              onDrop={handleImageDrop}
-            >
-              <input
-                accept="image/*"
-                className="menu-image-dropzone__input"
-                disabled={uploading}
-                onChange={handleImageInputChange}
-                ref={imageInputRef}
-                type="file"
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
+        <SectionCard
+          actions={
+            editingId ? (
+              <Button onClick={resetForm} size="sm" type="button" variant="ghost">
+                Cancel
+              </Button>
+            ) : undefined
+          }
+          title={editingId ? 'Update item' : 'Add item'}
+        >
+          <FormGrid>
+            <FormField htmlFor="item-name" label="Name" required>
+              <Input id="item-name" onChange={(event) => setForm({ ...form, name: event.target.value })} value={form.name} />
+            </FormField>
+            <FormField htmlFor="item-category" label="Category" required>
+              <Select onValueChange={(value) => setForm({ ...form, categoryId: value })} value={form.categoryId}>
+                <SelectTrigger className="w-full" id="item-category">
+                  <SelectValue placeholder="Choose a category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((category) => (
+                    <SelectItem key={documentId(category)} value={documentId(category)}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField htmlFor="item-price" label="Price (INR)">
+              <Input
+                id="item-price"
+                min="0"
+                onChange={(event) => setForm({ ...form, price: event.target.value })}
+                step="0.01"
+                type="number"
+                value={form.price}
               />
-              {form.imageUrl ? (
-                <img alt="Selected menu item" src={form.imageUrl} />
-              ) : (
-                <span className="menu-image-dropzone__empty">
-                  <span aria-hidden="true" className="material-symbols-outlined">add_photo_alternate</span>
-                  <strong>Drop image here</strong>
-                  <small>JPG, PNG, WebP or GIF up to 5 MB</small>
-                </span>
-              )}
-              {uploading ? <span className="menu-image-dropzone__badge">Uploading</span> : null}
-            </label>
-            <div className="menu-image-actions">
-              <button className="button-secondary" disabled={uploading} onClick={() => imageInputRef.current?.click()} type="button">
-                <span aria-hidden="true" className="material-symbols-outlined">upload</span>
-                {form.imageUrl ? 'Change image' : 'Choose image'}
-              </button>
-              {form.imageUrl ? (
-                <button className="button-secondary" disabled={uploading} onClick={clearImage} type="button">
-                  <span aria-hidden="true" className="material-symbols-outlined">delete</span>
-                  Remove
-                </button>
-              ) : null}
-            </div>
-            {imageFileName || imageStatus ? (
-              <p className="menu-image-note">
-                {imageFileName ? <strong>{imageFileName}</strong> : null}
-                {imageStatus ? <span>{imageStatus}</span> : null}
-              </p>
-            ) : (
-              <p className="muted">No image selected.</p>
-            )}
-          </article>
-        </section>
+            </FormField>
+            <FormField hint="Comma separated, e.g. vegetarian, chef_favorite" htmlFor="item-tags" label="Dietary tags">
+              <Input
+                id="item-tags"
+                onChange={(event) => setForm({ ...form, dietaryFlags: event.target.value })}
+                placeholder="vegetarian, spicy"
+                value={form.dietaryFlags}
+              />
+            </FormField>
+          </FormGrid>
+          <FormField htmlFor="item-description" label="Description">
+            <Textarea
+              id="item-description"
+              onChange={(event) => setForm({ ...form, description: event.target.value })}
+              rows={4}
+              value={form.description}
+            />
+          </FormField>
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <Checkbox
+              checked={form.available}
+              onCheckedChange={(checked) => setForm({ ...form, available: checked === true })}
+            />
+            Available to guests
+          </label>
+          <FormActions>
+            <Button disabled={uploading || saving} onClick={() => void submit()} type="button">
+              {editingId ? <Save /> : <Plus />}
+              {editingId ? 'Update item' : 'Create item'}
+            </Button>
+          </FormActions>
+        </SectionCard>
 
-        <section className="toolbar compact-toolbar menu-search-bar">
-          <input onChange={(event) => setQuery(event.target.value)} placeholder="Search menu" value={query} />
-          <span>{filteredItems.length} items</span>
-        </section>
+        <SectionCard
+          actions={<Badge variant={form.imageUrl ? 'success' : 'secondary'}>{form.imageUrl ? 'Ready' : 'Optional'}</Badge>}
+          title="Dish photo"
+        >
+          <ImageDropzone
+            busy={uploading}
+            fileName={imageFileName}
+            imageUrl={form.imageUrl}
+            note={imageUploadNote}
+            onClear={clearImage}
+            onFile={(file) => void uploadImage(file)}
+          />
+        </SectionCard>
+      </section>
 
-        <section className="menu-grid">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-0 flex-1 sm:max-w-sm">
+          <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            aria-label="Search menu"
+            className="pl-9"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search menu"
+            value={query}
+          />
+        </div>
+        <Badge variant="secondary">{filteredItems.length} items</Badge>
+      </div>
+
+      {state.status === 'loading' ? (
+        <LoadingCards count={6} />
+      ) : filteredItems.length === 0 ? (
+        <EmptyState
+          description={query ? 'Clear the search to see every dish.' : 'Create the first dish using the form above.'}
+          icon={UtensilsCrossed}
+          title="No menu items found"
+        />
+      ) : (
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filteredItems.map((item) => {
             const media = item.media as { url?: string } | undefined;
             return (
-              <article className="menu-card" key={documentId(item)}>
-                <div className="menu-card__media">
-                  {media?.url ? <img alt={item.name} src={media.url} /> : <div className="menu-card__placeholder" />}
-                </div>
-                <div>
-                  <p className="eyebrow">
-                    <span aria-hidden="true" className="material-symbols-outlined">{item.available ? 'check_circle' : 'visibility_off'}</span>
+              <Card className="gap-0 overflow-hidden p-0 shadow-card" key={documentId(item)}>
+                <div className="relative aspect-[16/10] bg-muted">
+                  {media?.url ? (
+                    <img alt={item.name} className="size-full object-cover" src={media.url} />
+                  ) : (
+                    <div className="grid size-full place-items-center text-muted-foreground/50">
+                      <UtensilsCrossed aria-hidden="true" className="size-10" />
+                    </div>
+                  )}
+                  <Badge className="absolute left-3 top-3" variant={item.available ? 'success' : 'secondary'}>
+                    {item.available ? <Eye /> : <EyeOff />}
                     {item.available ? 'Available' : 'Hidden'}
-                  </p>
-                  <h2>{item.name}</h2>
-                  <p className="muted">{item.description}</p>
+                  </Badge>
                 </div>
-                <strong>{money(item.price)}</strong>
-                <p className="muted">{item.dietaryFlags.length ? item.dietaryFlags.join(' - ') : 'No dietary tags'}</p>
-                <div className="action-row">
-                  <button className="button-secondary" onClick={() => edit(item)} type="button">
-                    <span aria-hidden="true" className="material-symbols-outlined">edit</span>
-                    Edit
-                  </button>
-                  <button className="danger-button" onClick={() => void remove(item)} type="button">
-                    <span aria-hidden="true" className="material-symbols-outlined">delete</span>
-                    Delete
-                  </button>
+                <div className="grid gap-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="truncate text-base font-semibold">{item.name}</h2>
+                      <p className="line-clamp-2 text-sm text-muted-foreground">{item.description || 'No description yet.'}</p>
+                    </div>
+                    <span className="shrink-0 font-semibold tabular-nums">{money(item.price)}</span>
+                  </div>
+                  {item.dietaryFlags.length ? (
+                    <div className="flex flex-wrap gap-1">
+                      {item.dietaryFlags.map((flag) => (
+                        <Badge key={flag} variant="outline">
+                          {flag.replaceAll('_', ' ')}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => edit(item)} size="sm" type="button" variant="outline">
+                      <Pencil />
+                      Edit
+                    </Button>
+                    <ConfirmDialog
+                      confirmLabel="Delete item"
+                      description={`${item.name} will disappear from the guest menu right away.`}
+                      destructive
+                      onConfirm={() => remove(item)}
+                      title={`Delete ${item.name}?`}
+                      trigger={
+                        <Button className="text-destructive hover:text-destructive" size="sm" type="button" variant="ghost">
+                          <Trash2 />
+                          Delete
+                        </Button>
+                      }
+                    />
+                  </div>
                 </div>
-              </article>
+              </Card>
             );
           })}
-          {!filteredItems.length ? (
-            <article className="panel menu-empty-state">
-              <span aria-hidden="true" className="material-symbols-outlined">restaurant_menu</span>
-              <h2>No menu items found</h2>
-              <p className="muted">Create a dish or clear the search filter.</p>
-            </article>
-          ) : null}
         </section>
-      </div>
-    </main>
+      )}
+    </PageShell>
   );
 }

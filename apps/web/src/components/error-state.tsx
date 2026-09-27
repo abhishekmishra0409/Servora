@@ -13,7 +13,7 @@ export function ErrorState({
   title = 'Something went wrong',
 }: {
   message: string;
-  onRetry?: () => void;
+  onRetry?: (() => void) | undefined;
   title?: string;
 }): ReactNode {
   return (

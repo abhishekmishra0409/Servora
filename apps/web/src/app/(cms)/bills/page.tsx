@@ -1,28 +1,39 @@
 'use client';
 
+import { Banknote, CircleCheckBig, CreditCard, QrCode, ReceiptText, Wallet } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
-import {
-  documentId,
-  getBills,
-  markPaymentPaid,
-  requestBill,
-  type CmsBill,
-  type PaymentSnapshot,
-} from '../../../lib/api-client';
-import { readCmsSettings } from '../../../lib/cms-storage';
-import { formatOrderNumber } from '../../../lib/order-number';
-import { createSocketClient } from '../../../lib/socket';
+import { EmptyState } from '@/components/empty-state';
+import { ErrorState } from '@/components/error-state';
+import { LoadingCards, LoadingRows } from '@/components/loading-state';
+import { PageHeader } from '@/components/page-header';
+import { PageShell } from '@/components/page-shell';
+import { SectionCard } from '@/components/section-card';
+import { StatusBadge } from '@/components/status-badge';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { documentId, getBills, markPaymentPaid, requestBill, type CmsBill, type PaymentSnapshot } from '@/lib/api-client';
+import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
+import { readCmsSettings } from '@/lib/cms-storage';
+import { money, shortId } from '@/lib/format';
+import { formatOrderNumber } from '@/lib/order-number';
+import { createSocketClient } from '@/lib/socket';
+import { humanize } from '@/lib/status-tone';
 
 const COMPLETED_PAGE_SIZE = 6;
 
-const money = (value: number): string =>
-  new Intl.NumberFormat('en-IN', { currency: 'INR', style: 'currency' }).format(value);
+const paymentMethods = [
+  { icon: Banknote, label: 'Cash', method: 'cash' },
+  { icon: CreditCard, label: 'Card', method: 'card' },
+  { icon: QrCode, label: 'UPI', method: 'upi' },
+];
 
 export default function BillsPage() {
   const [busy, setBusy] = useState('');
   const [completedPage, setCompletedPage] = useState(1);
-  const [message, setMessage] = useState('Loading bill follow-ups...');
+  const [state, setState] = useState<AsyncState>(loading);
   const [bills, setBills] = useState<CmsBill[]>([]);
   const settings = useMemo(() => (typeof window === 'undefined' ? null : readCmsSettings()), []);
   const canCapturePayment = ['platform_admin', 'owner', 'manager', 'waiter', 'cashier'].includes(settings?.role ?? '');
@@ -36,16 +47,14 @@ export default function BillsPage() {
 
   async function load(): Promise<void> {
     if (!settings?.branchId || !settings.token) {
-      setMessage('Sign in to load bills.');
+      setState(failed(new Error('This account is not linked to an outlet yet.')));
       return;
     }
-
     try {
-      const nextBills = await getBills(settings.branchId, settings.token);
-      setBills(nextBills);
-      setMessage(nextBills.length ? '' : 'No table bills found for this branch yet.');
+      setBills(await getBills(settings.branchId, settings.token));
+      setState(ready);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not load bill follow-ups.');
+      setState(failed(error, 'Could not load bills.'));
     }
   }
 
@@ -81,7 +90,17 @@ export default function BillsPage() {
   async function ensureBillPayment(bill: CmsBill): Promise<PaymentSnapshot> {
     const existingPaymentId = paymentIdFor(bill);
     if (existingPaymentId) {
-      return { amount: bill.amount, currency: bill.currency, id: existingPaymentId, method: bill.method, orderIds: bill.orderIds, provider: bill.provider, status: bill.status, tableId: bill.tableId, tableSessionId: bill.tableSessionId };
+      return {
+        amount: bill.amount,
+        currency: bill.currency,
+        id: existingPaymentId,
+        method: bill.method,
+        orderIds: bill.orderIds,
+        provider: bill.provider,
+        status: bill.status,
+        tableId: bill.tableId,
+        tableSessionId: bill.tableSessionId,
+      };
     }
 
     const firstOrder = bill.orders[0];
@@ -99,8 +118,9 @@ export default function BillsPage() {
     try {
       await ensureBillPayment(bill);
       await load();
+      toast.success('Bill generated');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not update bill follow-up.');
+      toast.error(errorMessage(error, 'Could not generate the bill.'));
     } finally {
       setBusy('');
     }
@@ -114,173 +134,160 @@ export default function BillsPage() {
       const payment = await ensureBillPayment(bill);
       await markPaymentPaid(documentId(payment), method, settings.token);
       await load();
+      toast.success(`Payment captured by ${method}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not capture payment.');
+      toast.error(errorMessage(error, 'Could not capture payment.'));
     } finally {
       setBusy('');
     }
   }
 
   function orderItemsSummary(bill: CmsBill): string {
-    return bill.orders
-      .flatMap((order) => order.items.map((item) => `${item.quantity}x ${item.name}`))
-      .join(', ');
+    return bill.orders.flatMap((order) => order.items.map((item) => `${item.quantity}× ${item.name}`)).join(', ');
   }
 
   function itemDetailLabel(item: CmsBill['orders'][number]['items'][number]): string {
-    const addonText = item.addonSnapshots.length
-      ? ` + ${item.addonSnapshots.map((addon) => addon.label).join(', ')}`
-      : '';
+    const addonText = item.addonSnapshots.length ? ` + ${item.addonSnapshots.map((addon) => addon.label).join(', ')}` : '';
     const variantText = item.variantLabel ? ` (${item.variantLabel})` : '';
-    return `${item.quantity}x ${item.name}${variantText}${addonText}`;
+    return `${item.quantity}× ${item.name}${variantText}${addonText}`;
   }
 
   return (
-    <main>
-      <div className="page-shell">
-        <section className="customer-header">
-          <div>
-            <p className="eyebrow">Bills</p>
-            <h1>Table Session Bills</h1>
-            <p className="muted">Orders from the same table session, grouped into one closeout bill.</p>
-          </div>
-          <button onClick={() => void load()} type="button">
-            <span aria-hidden="true" className="material-symbols-outlined">refresh</span>
-            Refresh
-          </button>
-        </section>
+    <PageShell>
+      <PageHeader
+        description="Orders from the same table session, grouped into one closeout bill."
+        eyebrow="Bills"
+        onRefresh={() => void load()}
+        refreshing={state.status === 'loading'}
+        title="Table bills"
+      />
 
-        {message ? <p className="notice-text">{message}</p> : null}
+      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
 
-        <section>
-          <div className="cms-section-head">
-            <h2>Pending Bills</h2>
-            <span className="cms-status">{activeBills.length} open</span>
-          </div>
-          {!activeBills.length ? (
-            <p className="muted">No pending bills right now. Completed bills are listed below.</p>
-          ) : null}
-        </section>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Pending bills</h2>
+          <Badge variant={activeBills.length ? 'warning' : 'secondary'}>{activeBills.length} open</Badge>
+        </div>
 
-        <section className="card-grid">
-          {activeBills.map((bill) => {
-            const id = billKey(bill);
-            const paymentRequested = bill.status !== 'not_requested';
-            return (
-              <article className="card bill-card" key={id}>
-                <div className="cms-ticket__head">
-                  <strong>Table ...{bill.tableId.slice(-4)}</strong>
-                  <span className="cms-status bill-card__status">{bill.status.replaceAll('_', ' ')}</span>
-                </div>
-                <p className="muted">{bill.orders.length} orders in this table session</p>
-                {bill.status === 'captured' ? (
-                  <p className="muted">Paid by {bill.method.replaceAll('_', ' ')}</p>
-                ) : null}
-                <div className="cms-list">
-                  {bill.orders.map((order) => (
-                    <div className="cms-list-row bill-order-row" key={documentId(order)}>
-                      <span aria-hidden="true" className="material-symbols-outlined">receipt_long</span>
-                      <div>
-                        <strong>{formatOrderNumber(order.orderNo)}</strong>
-                        <p className="muted">{order.status.replaceAll('_', ' ')} - {order.items.length} items</p>
-                        {order.items.length ? (
-                          <ul className="bill-item-list">
-                            {order.items.map((item) => (
-                              <li key={`${item.menuItemId}-${item.name}-${item.quantity}-${item.unitPrice}`}>
-                                {itemDetailLabel(item)}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
-                      </div>
-                      <strong className="bill-order-row__amount">{money(order.grandTotal)}</strong>
+        {state.status === 'loading' ? (
+          <LoadingCards count={2} />
+        ) : activeBills.length === 0 ? (
+          <EmptyState compact description="Completed bills are listed below." icon={Wallet} title="No pending bills" />
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {activeBills.map((bill) => {
+              const id = billKey(bill);
+              const paymentRequested = bill.status !== 'not_requested';
+              const isBusy = busy === id;
+              return (
+                <Card className="gap-4 px-5 py-4 shadow-card" key={id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">Table ···{shortId(bill.tableId)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {bill.orders.length} {bill.orders.length === 1 ? 'order' : 'orders'} in this table session
+                      </p>
                     </div>
-                  ))}
-                </div>
-                <div className="bill-card__footer">
-                  <div className="bill-card__total">
-                    <span>Total due</span>
-                    <strong>{money(bill.amount)}</strong>
+                    <StatusBadge kind="payment" label={humanize(bill.status)} value={bill.status} />
                   </div>
-                  <div className="bill-card__actions">
-                    {!paymentRequested ? (
-                      <button disabled={busy === id} onClick={() => void generateBill(bill)} type="button">
-                        <span aria-hidden="true" className="material-symbols-outlined">receipt_long</span>
-                        Generate bill
-                      </button>
-                    ) : null}
-                    {canCapturePayment && paymentRequested && bill.status !== 'captured' ? (
-                      <div className="bill-card__payment-actions" aria-label="Capture payment">
-                        <button className="button-secondary" disabled={busy === id} onClick={() => void markBillPaid(bill, 'cash')} type="button">
-                          <span aria-hidden="true" className="material-symbols-outlined">payments</span>
-                          Cash
-                        </button>
-                        <button className="button-secondary" disabled={busy === id} onClick={() => void markBillPaid(bill, 'card')} type="button">
-                          <span aria-hidden="true" className="material-symbols-outlined">credit_card</span>
-                          Card
-                        </button>
-                        <button className="button-secondary" disabled={busy === id} onClick={() => void markBillPaid(bill, 'upi')} type="button">
-                          <span aria-hidden="true" className="material-symbols-outlined">qr_code_2</span>
-                          UPI
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </section>
 
-        <section className="panel">
-          <div className="cms-section-head">
-            <h2>Completed Bills</h2>
-            <span className="cms-status">{completedBills.length} captured</span>
+                  <ul className="divide-y rounded-lg border">
+                    {bill.orders.map((order) => (
+                      <li className="flex items-start gap-3 px-3 py-2.5" key={documentId(order)}>
+                        <ReceiptText aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold">{formatOrderNumber(order.orderNo)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {humanize(order.status)} · {order.items.length} items
+                          </p>
+                          {order.items.length ? (
+                            <ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">
+                              {order.items.map((item) => (
+                                <li key={`${item.menuItemId}-${item.name}-${item.quantity}-${item.unitPrice}`}>{itemDetailLabel(item)}</li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </div>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums">{money(order.grandTotal)}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="grid">
+                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total due</span>
+                      <span className="font-display text-2xl font-semibold tabular-nums">{money(bill.amount)}</span>
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {!paymentRequested ? (
+                        <Button disabled={isBusy} onClick={() => void generateBill(bill)} type="button">
+                          <ReceiptText />
+                          Generate bill
+                        </Button>
+                      ) : null}
+                      {canCapturePayment && paymentRequested && bill.status !== 'captured'
+                        ? paymentMethods.map(({ icon: Icon, label, method }) => (
+                            <Button disabled={isBusy} key={method} onClick={() => void markBillPaid(bill, method)} type="button" variant="outline">
+                              <Icon />
+                              {label}
+                            </Button>
+                          ))
+                        : null}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
-          {!completedBills.length ? (
-            <p className="muted">No completed bills yet.</p>
-          ) : (
-            <>
-              <div className="cms-list">
-                {paginatedCompletedBills.map((bill) => {
-                  const tableLabel = bill.tableId ? `...${bill.tableId.slice(-4)}` : 'unknown';
-                  return (
-                    <article className="cms-list-row bill-completed-row" key={billKey(bill)}>
-                      <span aria-hidden="true" className="material-symbols-outlined">task_alt</span>
-                      <div>
-                        <strong>Table {tableLabel} · {money(bill.amount)}</strong>
-                        <p className="muted">
-                          Paid by {bill.method.replaceAll('_', ' ')} · {bill.orders.length} orders · {orderItemsSummary(bill) || 'No items'}
-                        </p>
-                      </div>
-                      <span className="cms-status">captured</span>
-                    </article>
-                  );
-                })}
-              </div>
-              <div className="action-row bill-pagination-row">
-                <button
-                  className="button-secondary"
-                  disabled={completedPage <= 1}
-                  onClick={() => setCompletedPage((current) => Math.max(1, current - 1))}
-                  type="button"
-                >
-                  Previous
-                </button>
-                <p className="muted">Page {completedPage} of {completedTotalPages}</p>
-                <button
-                  className="button-secondary"
-                  disabled={completedPage >= completedTotalPages}
-                  onClick={() => setCompletedPage((current) => Math.min(completedTotalPages, current + 1))}
-                  type="button"
-                >
-                  Next
-                </button>
-              </div>
-            </>
-          )}
-        </section>
-      </div>
-    </main>
+        )}
+      </section>
+
+      <SectionCard actions={<Badge variant="success">{completedBills.length} captured</Badge>} title="Completed bills">
+        {state.status === 'loading' ? (
+          <LoadingRows count={3} />
+        ) : completedBills.length === 0 ? (
+          <EmptyState compact icon={CircleCheckBig} title="No completed bills yet" />
+        ) : (
+          <>
+            <ul className="divide-y">
+              {paginatedCompletedBills.map((bill) => (
+                <li className="flex items-center gap-3 py-3" key={billKey(bill)}>
+                  <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-success-foreground text-success">
+                    <CircleCheckBig aria-hidden="true" className="size-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">
+                      Table ···{shortId(bill.tableId)} · {money(bill.amount)}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      Paid by {humanize(bill.method)} · {bill.orders.length} orders · {orderItemsSummary(bill) || 'No items'}
+                    </p>
+                  </div>
+                  <StatusBadge kind="payment" value="captured" />
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-center justify-between gap-3 border-t pt-4">
+              <Button disabled={completedPage <= 1} onClick={() => setCompletedPage((current) => Math.max(1, current - 1))} size="sm" type="button" variant="outline">
+                Previous
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Page {completedPage} of {completedTotalPages}
+              </p>
+              <Button
+                disabled={completedPage >= completedTotalPages}
+                onClick={() => setCompletedPage((current) => Math.min(completedTotalPages, current + 1))}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Next
+              </Button>
+            </div>
+          </>
+        )}
+      </SectionCard>
+    </PageShell>
   );
 }

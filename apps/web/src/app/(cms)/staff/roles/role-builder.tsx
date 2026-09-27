@@ -1,44 +1,76 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { expandPermissions, permissionsForBuiltinRole } from '@restaurent/shared';
-
-import { PageShell } from '../../../../components/page-shell';
-import { PermissionMatrix } from '../../../../components/permission-matrix';
-import { PlanLimitNotice, UsageStrip } from '../../../../components/plan-limit-notice';
-import { useCmsSession } from '../../../../components/cms-session-provider';
 import {
-  ApiError,
-  createCmsRole,
-  deleteCmsRole,
-  getCmsRoles,
-  updateCmsRole,
-  type CmsRole,
-} from '../../../../lib/api-client';
-import { normalize, summarize } from '../../../../lib/permission-matrix';
+  ArrowRight,
+  Ban,
+  BadgeCheck,
+  ChefHat,
+  CirclePlus,
+  Copy,
+  Eye,
+  HandPlatter,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  Trash2,
+  UserCog,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
+import Link from 'next/link';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
+
+import { useCmsSession } from '@/components/cms-session-provider';
+import { ConfirmDialog } from '@/components/confirm-dialog';
+import { DataTable } from '@/components/data-table';
+import { EmptyState } from '@/components/empty-state';
+import { ErrorState, NoticeBanner } from '@/components/error-state';
+import { FormActions, FormField, FormGrid } from '@/components/form-field';
+import { PageShell } from '@/components/page-shell';
+import { PermissionMatrix } from '@/components/permission-matrix';
+import { PlanLimitNotice, UsageStrip } from '@/components/plan-limit-notice';
+import { SectionCard } from '@/components/section-card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { ApiError, createCmsRole, deleteCmsRole, getCmsRoles, updateCmsRole, type CmsRole } from '@/lib/api-client';
+import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
+import { normalize, summarize } from '@/lib/permission-matrix';
+import { cn } from '@/lib/utils';
 
 /** Permissions an editor cannot strip from a role they personally hold. */
 const SELF_PROTECTED = ['roles:view', 'roles:edit', 'staff:view'];
 
-const PRESET_ICONS: Record<string, string> = {
-  blank: 'add_circle',
-  cashier: 'point_of_sale',
-  kitchen: 'skillet',
-  manager: 'manage_accounts',
-  owner: 'verified_user',
-  waiter: 'room_service',
+const PRESET_ICONS: Record<string, LucideIcon> = {
+  blank: CirclePlus,
+  cashier: Wallet,
+  kitchen: ChefHat,
+  manager: UserCog,
+  owner: BadgeCheck,
+  waiter: HandPlatter,
 };
 
-export function RoleBuilder(): React.ReactElement {
+function StepHeading({ number, title }: { number: number; title: string }): ReactNode {
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="inline-flex size-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+        {number}
+      </span>
+      <h3 className="text-base font-semibold">{title}</h3>
+    </div>
+  );
+}
+
+export function RoleBuilder(): ReactNode {
   const session = useCmsSession();
   const [roles, setRoles] = useState<CmsRole[]>([]);
-  const [message, setMessage] = useState('Loading roles...');
+  const [state, setState] = useState<AsyncState>(loading);
   const [limitError, setLimitError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState('');
-  const [confirmDeleteId, setConfirmDeleteId] = useState('');
   const [form, setForm] = useState({ description: '', name: '', presetKey: '' });
   const [granted, setGranted] = useState<ReadonlySet<string>>(() => normalize([]));
 
@@ -50,13 +82,11 @@ export function RoleBuilder(): React.ReactElement {
     if (!session.token || !session.tenantId) {
       return;
     }
-
     try {
-      const next = await getCmsRoles(session.tenantId, session.token);
-      setRoles(next);
-      setMessage(next.length === 0 ? 'No roles yet.' : '');
+      setRoles(await getCmsRoles(session.tenantId, session.token));
+      setState(ready);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not load roles.');
+      setState(failed(error, 'Could not load roles.'));
     }
   }
 
@@ -80,13 +110,13 @@ export function RoleBuilder(): React.ReactElement {
   const presets = useMemo(
     () => [
       ...roles.map((role) => ({
-        icon: PRESET_ICONS[role.key] ?? 'badge',
+        icon: PRESET_ICONS[role.key] ?? ShieldCheck,
         key: role.key,
         name: role.builtIn ? role.name : `Copy of ${role.name}`,
         permissions: role.permissions,
         summary: `${role.permissions.length} permissions`,
       })),
-      { icon: PRESET_ICONS.blank, key: 'blank', name: 'Start blank', permissions: [], summary: 'Pick everything yourself' },
+      { icon: PRESET_ICONS.blank!, key: 'blank', name: 'Start blank', permissions: [], summary: 'Pick everything yourself' },
     ],
     [roles],
   );
@@ -97,7 +127,6 @@ export function RoleBuilder(): React.ReactElement {
     setGranted(normalize([]));
     setEditorOpen(true);
     setLimitError(null);
-    setMessage('');
   }
 
   function openDuplicate(role: CmsRole): void {
@@ -105,7 +134,8 @@ export function RoleBuilder(): React.ReactElement {
     setForm({ description: role.description ?? '', name: `${role.name} copy`, presetKey: role.key });
     setGranted(normalize(role.permissions));
     setEditorOpen(true);
-    setMessage(`Started from ${role.name}. Nothing is saved until you choose Create role.`);
+    toast.info(`Started from ${role.name}. Nothing is saved until you choose Create role.`);
+    window.scrollTo({ behavior: 'smooth', top: 0 });
   }
 
   function openEdit(role: CmsRole): void {
@@ -113,19 +143,16 @@ export function RoleBuilder(): React.ReactElement {
     setForm({ description: role.description ?? '', name: role.name, presetKey: '' });
     setGranted(normalize(role.permissions));
     setEditorOpen(true);
-    setMessage('');
+    window.scrollTo({ behavior: 'smooth', top: 0 });
   }
 
   function applyPreset(preset: { key: string; name: string; permissions: string[] }): void {
     setForm((current) => ({ ...current, presetKey: preset.key }));
     setGranted(
       normalize(
-        preset.permissions.length > 0
-          ? preset.permissions
-          : expandPermissions(permissionsForBuiltinRole(preset.key)),
+        preset.permissions.length > 0 ? preset.permissions : expandPermissions(permissionsForBuiltinRole(preset.key)),
       ),
     );
-    setMessage(preset.key === 'blank' ? '' : `Started from ${preset.name}. Change anything you like.`);
   }
 
   async function save(): Promise<void> {
@@ -137,13 +164,13 @@ export function RoleBuilder(): React.ReactElement {
 
       if (editingId) {
         await updateCmsRole(editingId, { description: form.description, name: form.name.trim(), permissions }, session.token);
-        setMessage(`${form.name} saved.`);
+        toast.success(`${form.name} saved`);
       } else {
         await createCmsRole(
           { description: form.description, name: form.name.trim(), permissions, tenantId: session.tenantId },
           session.token,
         );
-        setMessage(`${form.name} created.`);
+        toast.success(`${form.name} created`);
       }
 
       setEditorOpen(false);
@@ -155,9 +182,8 @@ export function RoleBuilder(): React.ReactElement {
     } catch (error) {
       if (error instanceof ApiError && error.code === 'PLAN_LIMIT_REACHED') {
         setLimitError(error);
-        setMessage('');
       } else {
-        setMessage(error instanceof Error ? error.message : 'Could not save the role.');
+        toast.error(errorMessage(error, 'Could not save the role.'));
       }
     } finally {
       setBusy(false);
@@ -166,15 +192,14 @@ export function RoleBuilder(): React.ReactElement {
 
   async function remove(role: CmsRole): Promise<void> {
     setBusy(true);
-
     try {
       await deleteCmsRole(role.id, session.token);
-      setConfirmDeleteId('');
-      setMessage(`${role.name} deleted.`);
+      toast.success(`${role.name} deleted`);
       await load();
       await session.refreshEntitlements();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not delete the role.');
+      toast.error(errorMessage(error, 'Could not delete the role.'));
+      throw error;
     } finally {
       setBusy(false);
     }
@@ -184,198 +209,231 @@ export function RoleBuilder(): React.ReactElement {
   const customRoleCount = roles.filter((role) => !role.builtIn).length;
   const customRoleCap = session.entitlements?.limits.customRoles ?? 0;
 
+  const reviewRows: { icon: LucideIcon; label: string; values: string[] }[] = [
+    { icon: Eye, label: `Can open ${review.canSee.length} screens`, values: review.canSee },
+    { icon: CirclePlus, label: 'Can add in', values: review.canCreate },
+    { icon: Pencil, label: 'Can change in', values: review.canEdit },
+    { icon: Trash2, label: 'Can delete in', values: review.canDelete },
+    { icon: Ban, label: 'Cannot see', values: review.hidden },
+  ];
+
   return (
     <PageShell
-      description="Create roles that match how your restaurant actually works, then choose exactly what each one can see and change."
-      eyebrow="Roles &amp; Access"
-      title="Build roles for your team"
-      toolbar={
+      actions={
         canAdd && !editorOpen ? (
-          <button onClick={openCreate} type="button">
-            <span aria-hidden="true" className="material-symbols-outlined">add</span>
+          <Button onClick={openCreate} type="button">
+            <Plus />
             New role
-          </button>
-        ) : null
+          </Button>
+        ) : undefined
       }
+      description="Create roles that match how your restaurant actually works, then choose exactly what each one can see and change."
+      eyebrow="Roles and access"
+      title="Roles"
     >
-      {message ? <p className="notice-text">{message}</p> : null}
+      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
       <PlanLimitNotice error={limitError} resource="roles" />
-
       <UsageStrip cap={customRoleCap} label="Custom roles" used={customRoleCount} />
 
       {editorOpen ? (
-        <section className="panel role-editor">
-          <div className="role-step">
-            <div className="role-step__head">
-              <span className="role-step__num">1</span>
-              <h3>Name this role</h3>
-            </div>
-            <div className="cms-form-grid cms-form-grid--two">
-              <label>
-                <span>Role name</span>
-                <input
-                  onChange={(event) => setForm({ ...form, name: event.target.value })}
-                  placeholder="e.g. Floor Lead"
-                  value={form.name}
-                />
-              </label>
-              <label>
-                <span>Description (optional)</span>
-                <input
+        <SectionCard
+          actions={
+            <Button onClick={() => setEditorOpen(false)} size="sm" type="button" variant="ghost">
+              Cancel
+            </Button>
+          }
+          contentClassName="space-y-6"
+          title={editingId ? `Edit ${editingRole?.name ?? 'role'}` : 'New role'}
+        >
+          <div className="space-y-4">
+            <StepHeading number={1} title="Name this role" />
+            <FormGrid>
+              <FormField htmlFor="role-name" label="Role name" required>
+                <Input id="role-name" onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="e.g. Floor Lead" value={form.name} />
+              </FormField>
+              <FormField htmlFor="role-description" label="Description">
+                <Input
+                  id="role-description"
                   onChange={(event) => setForm({ ...form, description: event.target.value })}
                   placeholder="What does this person do?"
                   value={form.description}
                 />
-              </label>
-            </div>
+              </FormField>
+            </FormGrid>
 
             {editingId ? null : (
-              <>
-                <p className="muted">Start from a ready-made role, then change anything you like.</p>
-                <div className="role-preset-grid">
-                  {presets.map((preset) => (
-                    <button
-                      className={`role-preset${form.presetKey === preset.key ? ' role-preset--active' : ''}`}
-                      key={preset.key}
-                      onClick={() => applyPreset(preset)}
-                      type="button"
-                    >
-                      <span aria-hidden="true" className="material-symbols-outlined">{preset.icon}</span>
-                      <strong>{preset.name}</strong>
-                      <small>{preset.summary}</small>
-                    </button>
-                  ))}
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Start from a ready-made role, then change anything you like.</p>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {presets.map((preset) => {
+                    const Icon = preset.icon;
+                    const active = form.presetKey === preset.key;
+                    return (
+                      <button
+                        aria-pressed={active}
+                        className={cn(
+                          'grid justify-items-start gap-1 rounded-lg border bg-card p-3 text-left transition-colors',
+                          'hover:border-primary/50 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                          active && 'border-primary bg-accent/60 ring-2 ring-primary/20',
+                        )}
+                        key={preset.key}
+                        onClick={() => applyPreset(preset)}
+                        type="button"
+                      >
+                        <Icon aria-hidden="true" className={cn('size-5', active ? 'text-primary' : 'text-muted-foreground')} />
+                        <span className="text-sm font-semibold">{preset.name}</span>
+                        <span className="text-xs text-muted-foreground">{preset.summary}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-              </>
+              </div>
             )}
           </div>
 
-          <div className="role-step">
-            <div className="role-step__head">
-              <span className="role-step__num">2</span>
-              <h3>Choose what they can do</h3>
-            </div>
-
+          <div className="space-y-4 border-t pt-6">
+            <StepHeading number={2} title="Choose what they can do" />
             {form.name.trim() ? (
               <>
                 {editingOwnRole ? (
-                  <p className="notice-text">
-                    You are assigned this role, so Roles and Staff access stay switched on — otherwise
-                    saving would lock you out of this screen.
-                  </p>
+                  <NoticeBanner tone="info">
+                    You are assigned this role, so Roles and Staff access stay switched on. Otherwise saving would lock you
+                    out of this screen.
+                  </NoticeBanner>
                 ) : null}
-                <div className="role-matrix-toolbar">
-                  <span className="cms-status">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Badge variant="secondary">
                     {granted.size} permissions across {review.canSee.length} screens
-                  </span>
-                  <button className="button-quiet" onClick={() => setGranted(normalize([]))} type="button">
+                  </Badge>
+                  <Button onClick={() => setGranted(normalize([]))} size="sm" type="button" variant="ghost">
                     Clear all
-                  </button>
+                  </Button>
                 </div>
                 <PermissionMatrix granted={granted} locked={lockedPermissions} onChange={setGranted} />
               </>
             ) : (
-              <p className="muted">Give the role a name first.</p>
+              <p className="text-sm text-muted-foreground">Give the role a name first.</p>
             )}
           </div>
 
-          <div className="role-step">
-            <div className="role-step__head">
-              <span className="role-step__num">3</span>
-              <h3>Review and save</h3>
-            </div>
-            <ul className="role-summary">
-              <li>
-                <span aria-hidden="true" className="material-symbols-outlined">visibility</span>
-                Can open {review.canSee.length} screens: {review.canSee.join(', ') || 'nothing'}
-              </li>
-              <li>
-                <span aria-hidden="true" className="material-symbols-outlined">add_circle</span>
-                Can add in: {review.canCreate.join(', ') || 'nothing'}
-              </li>
-              <li>
-                <span aria-hidden="true" className="material-symbols-outlined">edit</span>
-                Can change in: {review.canEdit.join(', ') || 'nothing'}
-              </li>
-              <li>
-                <span aria-hidden="true" className="material-symbols-outlined">delete</span>
-                Can delete in: {review.canDelete.join(', ') || 'nothing'}
-              </li>
-              <li>
-                <span aria-hidden="true" className="material-symbols-outlined">block</span>
-                Cannot see: {review.hidden.join(', ') || 'nothing'}
-              </li>
+          <div className="space-y-4 border-t pt-6">
+            <StepHeading number={3} title="Review and save" />
+            <ul className="grid gap-2 text-sm">
+              {reviewRows.map(({ icon: Icon, label, values }) => (
+                <li className="flex items-start gap-2" key={label}>
+                  <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" />
+                  <span>
+                    <span className="font-medium">{label}:</span>{' '}
+                    <span className="text-muted-foreground">{values.join(', ') || 'nothing'}</span>
+                  </span>
+                </li>
+              ))}
             </ul>
-            <div className="action-row">
-              <button disabled={busy || !form.name.trim()} onClick={() => void save()} type="button">
+            <FormActions>
+              <Button disabled={busy || !form.name.trim()} onClick={() => void save()} type="button">
                 {editingId ? 'Save role' : 'Create role'}
-              </button>
-              <button className="button-secondary" onClick={() => setEditorOpen(false)} type="button">
+              </Button>
+              <Button onClick={() => setEditorOpen(false)} type="button" variant="outline">
                 Cancel
-              </button>
-            </div>
+              </Button>
+            </FormActions>
           </div>
-        </section>
+        </SectionCard>
       ) : null}
 
-      <section className="panel">
-        <div className="cms-section-head">
-          <h2>Roles</h2>
-          <Link className="button-quiet" href="/staff">Assign people to roles &rarr;</Link>
-        </div>
-        <div className="cms-data-table">
-          {roles.map((role) => (
-            <div className="cms-data-row roles-row" key={role.id}>
-              <div>
-                <strong>{role.name}</strong>
-                <small className="muted">{role.description ?? ''}</small>
-              </div>
-              <span className="pill">{role.builtIn ? 'Built-in' : 'Custom'}</span>
-              <span>{role.permissions.length} permissions</span>
-              <span>{role.assignedCount} {role.assignedCount === 1 ? 'person' : 'people'}</span>
-              <div className="action-row">
-                {role.builtIn ? (
-                  canAdd ? (
-                    <button className="button-secondary" onClick={() => openDuplicate(role)} type="button">
-                      Duplicate
-                    </button>
-                  ) : null
-                ) : (
-                  <>
-                    {canEdit ? (
-                      <button className="button-secondary" onClick={() => openEdit(role)} type="button">
-                        Edit
-                      </button>
-                    ) : null}
-                    {canDelete ? (
-                      confirmDeleteId === role.id ? (
-                        <>
-                          <button className="danger-button" disabled={busy} onClick={() => void remove(role)} type="button">
-                            Confirm delete
-                          </button>
-                          <button className="button-quiet" onClick={() => setConfirmDeleteId('')} type="button">
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          className="danger-button"
-                          disabled={role.assignedCount > 0}
-                          onClick={() => setConfirmDeleteId(role.id)}
-                          title={role.assignedCount > 0 ? 'Move these people to another role first' : undefined}
-                          type="button"
-                        >
-                          Delete
-                        </button>
-                      )
-                    ) : null}
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      <SectionCard
+        actions={
+          <Button asChild size="sm" variant="ghost">
+            <Link href="/staff">
+              Assign people to roles
+              <ArrowRight />
+            </Link>
+          </Button>
+        }
+        contentClassName="space-y-0"
+        title={`${roles.length} roles`}
+      >
+        <DataTable
+          columns={[
+            {
+              header: 'Role',
+              key: 'name',
+              render: (role) => (
+                <span className="grid">
+                  <span className="font-semibold">{role.name}</span>
+                  {role.description ? <span className="text-xs text-muted-foreground">{role.description}</span> : null}
+                </span>
+              ),
+            },
+            {
+              header: 'Type',
+              key: 'type',
+              render: (role) => <Badge variant={role.builtIn ? 'secondary' : 'info'}>{role.builtIn ? 'Built-in' : 'Custom'}</Badge>,
+            },
+            { header: 'Permissions', key: 'perms', render: (role) => <span className="tabular-nums">{role.permissions.length}</span> },
+            {
+              header: 'People',
+              key: 'people',
+              render: (role) => (
+                <span className="tabular-nums">
+                  {role.assignedCount} {role.assignedCount === 1 ? 'person' : 'people'}
+                </span>
+              ),
+            },
+            {
+              className: 'text-right',
+              header: '',
+              key: 'actions',
+              render: (role) => (
+                <div className="flex justify-end gap-1">
+                  {role.builtIn ? (
+                    canAdd ? (
+                      <Button onClick={() => openDuplicate(role)} size="sm" type="button" variant="outline">
+                        <Copy />
+                        Duplicate
+                      </Button>
+                    ) : null
+                  ) : (
+                    <>
+                      {canEdit ? (
+                        <Button aria-label={`Edit ${role.name}`} onClick={() => openEdit(role)} size="icon-sm" type="button" variant="ghost">
+                          <Pencil />
+                        </Button>
+                      ) : null}
+                      {canDelete ? (
+                        <ConfirmDialog
+                          confirmLabel="Delete role"
+                          description="Nobody is assigned to this role, so it can be removed safely."
+                          destructive
+                          onConfirm={() => remove(role)}
+                          title={`Delete ${role.name}?`}
+                          trigger={
+                            <Button
+                              aria-label={`Delete ${role.name}`}
+                              className="text-destructive hover:text-destructive"
+                              disabled={busy || role.assignedCount > 0}
+                              size="icon-sm"
+                              title={role.assignedCount > 0 ? 'Move these people to another role first' : undefined}
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Trash2 />
+                            </Button>
+                          }
+                        />
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              ),
+            },
+          ]}
+          empty={<EmptyState compact icon={ShieldCheck} title="No roles yet" />}
+          loading={state.status === 'loading'}
+          rowKey={(role) => role.id}
+          rows={roles}
+        />
+      </SectionCard>
     </PageShell>
   );
 }

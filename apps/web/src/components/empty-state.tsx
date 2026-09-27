@@ -14,8 +14,8 @@ export function EmptyState({
   action?: ReactNode;
   className?: string;
   compact?: boolean;
-  description?: string;
-  icon?: LucideIcon;
+  description?: string | undefined;
+  icon?: LucideIcon | undefined;
   title: string;
 }): ReactNode {
   return (

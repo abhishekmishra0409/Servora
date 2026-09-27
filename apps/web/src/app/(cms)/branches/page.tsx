@@ -1,10 +1,21 @@
 'use client';
 
+import { Archive, Pencil, Plus, Store } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
-import { PageShell } from '../../../components/page-shell';
-import { PlanLimitNotice, UsageStrip } from '../../../components/plan-limit-notice';
-import { useCmsSession } from '../../../components/cms-session-provider';
+import { useCmsSession } from '@/components/cms-session-provider';
+import { ConfirmDialog } from '@/components/confirm-dialog';
+import { DataTable } from '@/components/data-table';
+import { EmptyState } from '@/components/empty-state';
+import { ErrorState } from '@/components/error-state';
+import { FormField } from '@/components/form-field';
+import { PageShell } from '@/components/page-shell';
+import { PlanLimitNotice, UsageStrip } from '@/components/plan-limit-notice';
+import { SectionCard } from '@/components/section-card';
+import { StatusBadge } from '@/components/status-badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   ApiError,
   archiveCmsBranch,
@@ -13,18 +24,19 @@ import {
   getCmsBranches,
   updateCmsBranch,
   type CmsBranch,
-} from '../../../lib/api-client';
+} from '@/lib/api-client';
+import { errorMessage, failed, loading, ready, type AsyncState } from '@/lib/async-state';
+import { humanize } from '@/lib/status-tone';
 
 export default function BranchesPage() {
   const session = useCmsSession();
   const [branches, setBranches] = useState<CmsBranch[]>([]);
-  const [message, setMessage] = useState('Loading outlets...');
+  const [state, setState] = useState<AsyncState>(loading);
   const [limitError, setLimitError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState('');
   const [editingId, setEditingId] = useState('');
   const [editingName, setEditingName] = useState('');
-  const [confirmArchiveId, setConfirmArchiveId] = useState('');
 
   const canAdd = session.can('branches:add');
   const canEdit = session.can('branches:edit');
@@ -34,13 +46,11 @@ export default function BranchesPage() {
     if (!session.token || !session.tenantId) {
       return;
     }
-
     try {
-      const next = await getCmsBranches(session.tenantId, session.token);
-      setBranches(next);
-      setMessage(next.length === 0 ? 'No outlets yet.' : '');
+      setBranches(await getCmsBranches(session.tenantId, session.token));
+      setState(ready);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not load outlets.');
+      setState(failed(error, 'Could not load outlets.'));
     }
   }
 
@@ -50,7 +60,7 @@ export default function BranchesPage() {
 
   async function create(): Promise<void> {
     if (!name.trim()) {
-      setMessage('Give the outlet a name.');
+      toast.error('Give the outlet a name.');
       return;
     }
 
@@ -60,16 +70,15 @@ export default function BranchesPage() {
     try {
       await createCmsBranch({ name: name.trim(), tenantId: session.tenantId }, session.token);
       setName('');
-      setMessage('Outlet created.');
+      toast.success('Outlet created');
       await load();
       await session.reload();
       await session.refreshEntitlements();
     } catch (error) {
       if (error instanceof ApiError && error.code === 'PLAN_LIMIT_REACHED') {
         setLimitError(error);
-        setMessage('');
       } else {
-        setMessage(error instanceof Error ? error.message : 'Could not create the outlet.');
+        toast.error(errorMessage(error, 'Could not create the outlet.'));
       }
     } finally {
       setBusy(false);
@@ -77,15 +86,19 @@ export default function BranchesPage() {
   }
 
   async function saveName(id: string): Promise<void> {
+    if (!editingName.trim()) {
+      toast.error('The outlet name cannot be empty.');
+      return;
+    }
     setBusy(true);
-
     try {
       await updateCmsBranch(id, { name: editingName.trim() }, session.token);
       setEditingId('');
+      toast.success('Outlet renamed');
       await load();
       await session.reload();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not rename the outlet.');
+      toast.error(errorMessage(error, 'Could not rename the outlet.'));
     } finally {
       setBusy(false);
     }
@@ -93,16 +106,15 @@ export default function BranchesPage() {
 
   async function archive(id: string): Promise<void> {
     setBusy(true);
-
     try {
       await archiveCmsBranch(id, session.token);
-      setConfirmArchiveId('');
-      setMessage('Outlet archived. Its past orders and bills are kept.');
+      toast.success('Outlet archived. Its past orders and bills are kept.');
       await load();
       await session.reload();
       await session.refreshEntitlements();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not archive the outlet.');
+      toast.error(errorMessage(error, 'Could not archive the outlet.'));
+      throw error;
     } finally {
       setBusy(false);
     }
@@ -116,99 +128,124 @@ export default function BranchesPage() {
     <PageShell
       description="Each outlet has its own tables, menu, and staff roles. People can hold a different role at each one."
       eyebrow="Outlets"
-      title="Your restaurant locations"
+      title="Your locations"
     >
-      {message ? <p className="notice-text">{message}</p> : null}
+      {state.status === 'error' ? <ErrorState message={state.error ?? ''} onRetry={() => void load()} /> : null}
       <PlanLimitNotice error={limitError} resource="outlets" />
-
       <UsageStrip cap={cap} label="Outlets" used={used} />
 
       {canAdd ? (
-        <section className="panel">
-          <div className="cms-section-head"><h2>Add an outlet</h2></div>
-          <div className="cms-form-grid cms-form-grid--two">
-            <label>
-              <span>Outlet name</span>
-              <input
-                onChange={(event) => setName(event.target.value)}
-                placeholder="e.g. Riverside"
-                value={name}
-              />
-            </label>
-            <div className="action-row">
-              <button
-                disabled={busy || atCap || !name.trim()}
-                onClick={() => void create()}
-                title={atCap ? 'Your plan’s outlet limit is reached' : undefined}
-                type="button"
-              >
-                Create outlet
-              </button>
-            </div>
+        <SectionCard title="Add an outlet">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <FormField className="flex-1" htmlFor="outlet-name" label="Outlet name">
+              <Input id="outlet-name" onChange={(event) => setName(event.target.value)} placeholder="e.g. Riverside" value={name} />
+            </FormField>
+            <Button
+              disabled={busy || atCap || !name.trim()}
+              onClick={() => void create()}
+              title={atCap ? 'Your plan’s outlet limit is reached' : undefined}
+              type="button"
+            >
+              <Plus />
+              Create outlet
+            </Button>
           </div>
-        </section>
+        </SectionCard>
       ) : null}
 
-      <section className="panel">
-        <div className="cms-section-head"><h2>Outlets</h2></div>
-        <div className="cms-data-table">
-          {branches.map((branch) => {
-            const id = documentId(branch);
-
-            return (
-              <div className="cms-data-row" key={id}>
-                <div>
-                  {editingId === id ? (
-                    <input onChange={(event) => setEditingName(event.target.value)} value={editingName} />
-                  ) : (
-                    <strong>{branch.name}</strong>
-                  )}
-                  <small className="muted">/{branch.slug}</small>
-                </div>
-                <span>{branch.serviceMode?.replaceAll('_', ' ') ?? ''}</span>
-                <span className="cms-status">Active</span>
-                <div className="action-row">
-                  {canEdit ? (
-                    editingId === id ? (
-                      <>
-                        <button disabled={busy} onClick={() => void saveName(id)} type="button">Save</button>
-                        <button className="button-quiet" onClick={() => setEditingId('')} type="button">Cancel</button>
-                      </>
-                    ) : (
-                      <button
-                        className="button-secondary"
-                        onClick={() => {
-                          setEditingId(id);
-                          setEditingName(branch.name);
-                        }}
-                        type="button"
-                      >
-                        Rename
-                      </button>
-                    )
-                  ) : null}
-                  {canDelete ? (
-                    confirmArchiveId === id ? (
-                      <>
-                        <button className="danger-button" disabled={busy} onClick={() => void archive(id)} type="button">
-                          Confirm archive
-                        </button>
-                        <button className="button-quiet" onClick={() => setConfirmArchiveId('')} type="button">
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <button className="danger-button" onClick={() => setConfirmArchiveId(id)} type="button">
-                        Archive
-                      </button>
-                    )
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      <SectionCard contentClassName="space-y-0" title={`${branches.length} outlets`}>
+        <DataTable
+          columns={[
+            {
+              header: 'Outlet',
+              key: 'name',
+              render: (branch) => {
+                const id = documentId(branch);
+                return editingId === id ? (
+                  <Input
+                    aria-label="Outlet name"
+                    autoFocus
+                    className="h-8"
+                    onChange={(event) => setEditingName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') void saveName(id);
+                      if (event.key === 'Escape') setEditingId('');
+                    }}
+                    value={editingName}
+                  />
+                ) : (
+                  <span className="grid">
+                    <span className="font-semibold">{branch.name}</span>
+                    <span className="text-xs text-muted-foreground">/{branch.slug}</span>
+                  </span>
+                );
+              },
+            },
+            {
+              header: 'Service mode',
+              key: 'mode',
+              render: (branch) => <span className="text-muted-foreground">{humanize(branch.serviceMode ?? '')}</span>,
+            },
+            { header: 'Status', key: 'status', render: () => <StatusBadge kind="tenant" value="active" /> },
+            {
+              className: 'text-right',
+              header: '',
+              key: 'actions',
+              render: (branch) => {
+                const id = documentId(branch);
+                return (
+                  <div className="flex justify-end gap-1">
+                    {canEdit ? (
+                      editingId === id ? (
+                        <>
+                          <Button disabled={busy} onClick={() => void saveName(id)} size="sm" type="button">
+                            Save
+                          </Button>
+                          <Button onClick={() => setEditingId('')} size="sm" type="button" variant="ghost">
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          onClick={() => {
+                            setEditingId(id);
+                            setEditingName(branch.name);
+                          }}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          <Pencil />
+                          Rename
+                        </Button>
+                      )
+                    ) : null}
+                    {canDelete ? (
+                      <ConfirmDialog
+                        confirmLabel="Archive outlet"
+                        description="Staff lose access to this outlet. Past orders and bills are kept for reporting."
+                        destructive
+                        onConfirm={() => archive(id)}
+                        title={`Archive ${branch.name}?`}
+                        trigger={
+                          <Button className="text-destructive hover:text-destructive" disabled={busy} size="sm" type="button" variant="ghost">
+                            <Archive />
+                            Archive
+                          </Button>
+                        }
+                      />
+                    ) : null}
+                  </div>
+                );
+              },
+            },
+          ]}
+          empty={<EmptyState compact description="Create the first outlet above." icon={Store} title="No outlets yet" />}
+          loading={state.status === 'loading'}
+          rowKey={documentId}
+          rows={branches}
+        />
+      </SectionCard>
     </PageShell>
   );
 }

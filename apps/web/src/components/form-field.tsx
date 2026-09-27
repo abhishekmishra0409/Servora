@@ -14,9 +14,9 @@ export function FormField({
 }: {
   children: ReactNode;
   className?: string;
-  error?: string;
-  hint?: string;
-  htmlFor?: string;
+  error?: string | undefined;
+  hint?: string | undefined;
+  htmlFor?: string | undefined;
   label: string;
   required?: boolean;
 }): ReactNode {

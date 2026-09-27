@@ -24,7 +24,7 @@ export function StatCard({
 }: {
   className?: string;
   hint?: ReactNode;
-  icon?: LucideIcon;
+  icon?: LucideIcon | undefined;
   label: string;
   tone?: StatusTone;
   value: ReactNode;

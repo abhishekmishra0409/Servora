@@ -15,8 +15,8 @@ export function SectionCard({
   children: ReactNode;
   className?: string;
   contentClassName?: string;
-  description?: string;
-  title?: string;
+  description?: string | undefined;
+  title?: string | undefined;
 }): ReactNode {
   return (
     <Card className={cn('shadow-card', className)}>
